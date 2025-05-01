@@ -1,5 +1,7 @@
-import logo from './logo.svg';
-import './App.css';
+import logo from "./logo.svg";
+import "./App.css";
+import ScheduleBuilder from "../schedule-builder/src/ScheduleBuilder";
+import "./styles.css";
 
 function App() {
   return (
