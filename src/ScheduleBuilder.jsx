@@ -27,13 +27,21 @@ export default function ScheduleBuilder() {
 
   // Load from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem("schedule");
-    if (saved) setSchedule(JSON.parse(saved));
+    try {
+      const saved = localStorage.getItem("schedule");
+      if (saved) setSchedule(JSON.parse(saved));
+    } catch (err) {
+      console.error("Error loading from localStorage:", err);
+    }
   }, []);
 
   // Save to localStorage
   useEffect(() => {
-    localStorage.setItem("schedule", JSON.stringify(schedule));
+    try {
+      localStorage.setItem("schedule", JSON.stringify(schedule));
+    } catch (err) {
+      console.error("Error saving to localStorage:", err);
+    }
   }, [schedule]);
 
   const handleChange = (e) => {
@@ -42,8 +50,11 @@ export default function ScheduleBuilder() {
     setError("");
   };
 
-  const timesOverlap = (start1, end1, start2, end2) =>
-    !(end1 <= start2 || start1 >= end2);
+  // Fixed time comparison function
+  const timesOverlap = (start1, end1, start2, end2) => {
+    // Convert times to comparable format
+    return !(end1 <= start2 || start1 >= end2);
+  };
 
   const addToSchedule = () => {
     const { course, day, startTime, endTime } = formData;
@@ -53,13 +64,15 @@ export default function ScheduleBuilder() {
       return;
     }
 
-    const start = startTime;
-    const end = endTime;
+    if (startTime >= endTime) {
+      setError("End time must be after start time.");
+      return;
+    }
 
     const conflict = schedule.some(
       (item) =>
         item.day === day &&
-        timesOverlap(start, end, item.startTime, item.endTime)
+        timesOverlap(startTime, endTime, item.startTime, item.endTime)
     );
 
     if (conflict) {
@@ -75,7 +88,28 @@ export default function ScheduleBuilder() {
   // Add function to clear the schedule
   const clearSchedule = () => {
     setSchedule([]);
-    localStorage.removeItem("schedule");
+    try {
+      localStorage.removeItem("schedule");
+    } catch (err) {
+      console.error("Error clearing localStorage:", err);
+    }
+  };
+
+  // Helper function to check if an event should be displayed in a time slot
+  const shouldDisplayEvent = (event, hour) => {
+    const hourNum = parseInt(hour.split(":")[0], 10);
+    const eventStartHour = parseInt(event.startTime.split(":")[0], 10);
+    const eventEndHour = parseInt(event.endTime.split(":")[0], 10);
+
+    // Handle minutes
+    const eventStartMinutes = parseInt(event.startTime.split(":")[1], 10) || 0;
+    const eventEndMinutes = parseInt(event.endTime.split(":")[1], 10) || 0;
+
+    // Convert to decimal hours for comparison
+    const eventStart = eventStartHour + eventStartMinutes / 60;
+    const eventEnd = eventEndHour + eventEndMinutes / 60;
+
+    return eventStart <= hourNum && eventEnd > hourNum;
   };
 
   return (
@@ -136,16 +170,17 @@ export default function ScheduleBuilder() {
               <React.Fragment key={i}>
                 <div className="time-slot">{hour}</div>
                 {days.map((day) => (
-                  <div className="calendar-cell" key={day + i}>
+                  <div className="calendar-cell" key={`${day}-${i}`}>
                     {schedule
                       .filter(
                         (item) =>
-                          item.day === day &&
-                          item.startTime <= hour &&
-                          item.endTime > hour
+                          item.day === day && shouldDisplayEvent(item, hour)
                       )
                       .map((item, index) => (
-                        <div className="calendar-event" key={index}>
+                        <div
+                          className="calendar-event"
+                          key={`${index}-${item.course}`}
+                        >
                           {item.course}
                         </div>
                       ))}
