@@ -20,7 +20,6 @@ export default function ScheduleBuilder() {
     const saved = localStorage.getItem("schedule");
     if (saved) setSchedule(JSON.parse(saved));
   }, []);
-
   // Save to localStorage
   useEffect(() => {
     localStorage.setItem("schedule", JSON.stringify(schedule));

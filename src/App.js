@@ -1,7 +1,6 @@
-import React from "react";
-import "./App.css";
-import ScheduleBuilder from "./ScheduleBuilder"; // Import from the same directory
+import React, { useEffect, useState } from "react";
 import "./styles.css";
+import ScheduleBuilder from "./ScheduleBuilder"; // Import from the same directory
 
 function App() {
   return (
