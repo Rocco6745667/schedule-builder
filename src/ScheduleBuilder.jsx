@@ -1,9 +1,19 @@
 import React, { useEffect, useState } from "react";
 import "./styles.css";
 
-const hours = Array.from({ length: 12 }, (_, i) => `${8 + i}:00`);
+// Updated to include all 24 hours
+const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`);
 
-const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+// Updated to include all 7 days of the week
+const days = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
 
 export default function ScheduleBuilder() {
   const [schedule, setSchedule] = useState([]);
@@ -20,6 +30,7 @@ export default function ScheduleBuilder() {
     const saved = localStorage.getItem("schedule");
     if (saved) setSchedule(JSON.parse(saved));
   }, []);
+
   // Save to localStorage
   useEffect(() => {
     localStorage.setItem("schedule", JSON.stringify(schedule));
@@ -61,6 +72,12 @@ export default function ScheduleBuilder() {
     setError("");
   };
 
+  // Add function to clear the schedule
+  const clearSchedule = () => {
+    setSchedule([]);
+    localStorage.removeItem("schedule");
+  };
+
   return (
     <div className="schedule-builder">
       <h1>Schedule Builder</h1>
@@ -93,43 +110,50 @@ export default function ScheduleBuilder() {
           onChange={handleChange}
         />
         <button onClick={addToSchedule}>Add</button>
+        <button onClick={clearSchedule} className="clear-button">
+          Clear Schedule
+        </button>
       </div>
 
       {error && <div className="error">{error}</div>}
 
       <h2>Weekly Calendar</h2>
-      <div className="calendar">
-        <div className="calendar-header">
-          <div className="time-slot" />
-          {days.map((day) => (
-            <div className="day-column-header" key={day}>
-              {day}
-            </div>
-          ))}
-        </div>
 
-        <div className="calendar-grid">
-          {hours.map((hour, i) => (
-            <React.Fragment key={i}>
-              <div className="time-slot">{hour}</div>
-              {days.map((day) => (
-                <div className="calendar-cell" key={day + i}>
-                  {schedule
-                    .filter(
-                      (item) =>
-                        item.day === day &&
-                        item.startTime <= hour &&
-                        item.endTime > hour
-                    )
-                    .map((item, index) => (
-                      <div className="calendar-event" key={index}>
-                        {item.course}
-                      </div>
-                    ))}
-                </div>
-              ))}
-            </React.Fragment>
-          ))}
+      {/* Updated calendar view with scrollable container */}
+      <div className="calendar-container">
+        <div className="calendar">
+          <div className="calendar-header">
+            <div className="time-slot" />
+            {days.map((day) => (
+              <div className="day-column-header" key={day}>
+                {day}
+              </div>
+            ))}
+          </div>
+
+          <div className="calendar-grid">
+            {hours.map((hour, i) => (
+              <React.Fragment key={i}>
+                <div className="time-slot">{hour}</div>
+                {days.map((day) => (
+                  <div className="calendar-cell" key={day + i}>
+                    {schedule
+                      .filter(
+                        (item) =>
+                          item.day === day &&
+                          item.startTime <= hour &&
+                          item.endTime > hour
+                      )
+                      .map((item, index) => (
+                        <div className="calendar-event" key={index}>
+                          {item.course}
+                        </div>
+                      ))}
+                  </div>
+                ))}
+              </React.Fragment>
+            ))}
+          </div>
         </div>
       </div>
     </div>
