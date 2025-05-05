@@ -510,14 +510,28 @@ export default function ScheduleBuilder() {
 
       <h2>Weekly Calendar</h2>
 
+      {/* Add week navigation controls */}
+      <div className="period-navigation">
+        <button onClick={() => navigatePeriod(-1)}>Previous Week</button>
+        <span>
+          {formatDate(getWeekDates().mondayDate)} -{" "}
+          {formatDate(getWeekDates().sundayDate)}
+        </span>
+        <button onClick={() => navigatePeriod(1)}>Next Week</button>
+      </div>
+
       {/* Updated calendar view with scrollable container */}
       <div className="calendar-container">
         <div className="calendar">
           <div className="calendar-header">
             <div className="time-slot" />
-            {daysOfWeek.map((day) => (
-              <div className="day-column-header" key={day}>
-                {day}
+            {getWeekDays().map((date) => (
+              <div
+                className={`day-column-header ${isToday(date) ? "today" : ""}`}
+                key={date.toISOString()}
+              >
+                {daysOfWeek[date.getDay() === 0 ? 6 : date.getDay() - 1]}
+                <div className="date-label">{date.getDate()}</div>
               </div>
             ))}
           </div>
@@ -526,17 +540,17 @@ export default function ScheduleBuilder() {
             {hours.map((hour, i) => (
               <React.Fragment key={i}>
                 <div className="time-slot">{hour}</div>
-                {daysOfWeek.map((day) => (
-                  <div className="calendar-cell" key={`${day}-${i}`}>
+                {getWeekDays().map((date) => (
+                  <div
+                    className={`calendar-cell ${isToday(date) ? "today" : ""}`}
+                    key={`${date.toISOString()}-${i}`}
+                  >
                     {schedule
-                      .filter(
-                        (item) =>
-                          item.day === day && shouldDisplayEvent(item, hour)
-                      )
+                      .filter((item) => shouldDisplayEvent(item, hour, date))
                       .map((item, index) => (
                         <div
                           className="calendar-event"
-                          key={`${index}-${item.course}`}
+                          key={`${index}-${item.id}`}
                           style={{ backgroundColor: item.color }}
                           title={item.description || item.course}
                         >

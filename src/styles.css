@@ -65,6 +65,38 @@ h3 {
   font-size: 1.2em;
 }
 
+.period-navigation {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding: 0 10px;
+}
+
+.period-navigation button {
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.period-navigation button:hover {
+  background-color: #45a049;
+}
+
+.today {
+  background-color: rgba(76, 175, 80, 0.1);
+}
+
+.date-label {
+  font-size: 12px;
+  margin-top: 4px;
+  font-weight: normal;
+}
+
 /* Form styling */
 .form {
   display: flex;
