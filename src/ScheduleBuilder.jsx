@@ -508,94 +508,230 @@ export default function ScheduleBuilder() {
 
       {error && <div className="error">{error}</div>}
 
-      <h2>Weekly Calendar</h2>
+      <h2>{view.charAt(0).toUpperCase() + view.slice(1)} View</h2>
 
-      {/* Add week navigation controls */}
+      {/* Navigation controls for all views */}
       <div className="period-navigation">
-        <button onClick={() => navigatePeriod(-1)}>Previous Week</button>
-        <span>
-          {formatDate(getWeekDates().mondayDate)} -{" "}
-          {formatDate(getWeekDates().sundayDate)}
-        </span>
-        <button onClick={() => navigatePeriod(1)}>Next Week</button>
+        <button onClick={() => navigatePeriod(-1)}>
+          Previous{" "}
+          {view === "week" ? "Week" : view === "month" ? "Month" : "Year"}
+        </button>
+        {view === "week" && (
+          <span>
+            {formatDate(getWeekDates().mondayDate)} -{" "}
+            {formatDate(getWeekDates().sundayDate)}
+          </span>
+        )}
+        {view === "month" && (
+          <span>
+            {months[selectedMonth]} {selectedYear}
+          </span>
+        )}
+        {view === "year" && <span>{selectedYear}</span>}
+        {view === "list" && <span>All Events</span>}
+        <button onClick={() => navigatePeriod(1)}>
+          Next {view === "week" ? "Week" : view === "month" ? "Month" : "Year"}
+        </button>
       </div>
 
-      {/* Updated calendar view with scrollable container */}
-      <div className="calendar-container">
-        <div className="calendar">
-          <div className="calendar-header">
-            <div className="time-slot" />
-            {getWeekDays().map((date) => (
-              <div
-                className={`day-column-header ${isToday(date) ? "today" : ""}`}
-                key={date.toISOString()}
-              >
-                {daysOfWeek[date.getDay() === 0 ? 6 : date.getDay() - 1]}
-                <div className="date-label">{date.getDate()}</div>
+      {/* Week View */}
+      {view === "week" && (
+        <div className="calendar-container">
+          <div className="calendar">
+            <div className="calendar-header">
+              <div className="time-slot" />
+              {getWeekDays().map((date) => (
+                <div
+                  className={`day-column-header ${
+                    isToday(date) ? "today" : ""
+                  }`}
+                  key={date.toISOString()}
+                >
+                  {daysOfWeek[date.getDay() === 0 ? 6 : date.getDay() - 1]}
+                  <div className="date-label">{date.getDate()}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="calendar-grid">
+              {hours.map((hour, i) => (
+                <React.Fragment key={i}>
+                  <div className="time-slot">{hour}</div>
+                  {getWeekDays().map((date) => (
+                    <div
+                      className={`calendar-cell ${
+                        isToday(date) ? "today" : ""
+                      }`}
+                      key={`${date.toISOString()}-${i}`}
+                    >
+                      {schedule
+                        .filter((item) => shouldDisplayEvent(item, hour, date))
+                        .map((item, index) => (
+                          <div
+                            className="calendar-event"
+                            key={`${item.id}-${index}`}
+                            style={{ backgroundColor: item.color }}
+                            title={`${item.course} (${formatTime(
+                              item.startTime
+                            )} - ${formatTime(item.endTime)})${
+                              item.description ? ": " + item.description : ""
+                            }`}
+                          >
+                            {item.course}
+                          </div>
+                        ))}
+                    </div>
+                  ))}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Month View */}
+      {view === "month" && (
+        <div className="month-view">
+          <div className="month-grid">
+            {daysOfWeek.map((day) => (
+              <div className="month-header-cell" key={day}>
+                {day.substring(0, 3)}
               </div>
             ))}
-          </div>
 
-          <div className="calendar-grid">
-            {hours.map((hour, i) => (
-              <React.Fragment key={i}>
-                <div className="time-slot">{hour}</div>
-                {getWeekDays().map((date) => (
-                  <div
-                    className={`calendar-cell ${isToday(date) ? "today" : ""}`}
-                    key={`${date.toISOString()}-${i}`}
-                  >
-                    {schedule
-                      .filter((item) => shouldDisplayEvent(item, hour, date))
-                      .map((item, index) => (
-                        <div
-                          className="calendar-event"
-                          key={`${index}-${item.id}`}
-                          style={{ backgroundColor: item.color }}
-                          title={item.description || item.course}
-                        >
-                          {item.course}
+            {getDaysInMonth(selectedYear, selectedMonth).map((date, index) => (
+              <div
+                key={index}
+                className={`month-cell ${
+                  date && isToday(date) ? "today" : ""
+                } ${!date ? "empty-cell" : ""}`}
+                onClick={() => date && setSelectedDate(date)}
+              >
+                {date && (
+                  <>
+                    <div className="month-date-number">{date.getDate()}</div>
+                    <div className="month-events">
+                      {getEventsForDate(date)
+                        .slice(0, 3)
+                        .map((event, idx) => (
+                          <div
+                            key={idx}
+                            className="month-event"
+                            style={{ backgroundColor: event.color }}
+                            title={`${event.course} (${formatTime(
+                              event.startTime
+                            )} - ${formatTime(event.endTime)})${
+                              event.description ? ": " + event.description : ""
+                            }`}
+                          >
+                            {event.course}
+                          </div>
+                        ))}
+                      {getEventsForDate(date).length > 3 && (
+                        <div className="more-events">
+                          +{getEventsForDate(date).length - 3} more
                         </div>
-                      ))}
-                  </div>
-                ))}
-              </React.Fragment>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             ))}
           </div>
         </div>
-      </div>
+      )}
 
-      <h2>Event List</h2>
-      <div className="event-list">
-        {schedule.length === 0 ? (
-          <p>No events scheduled yet.</p>
-        ) : (
-          schedule.map((event, index) => (
+      {/* Year View */}
+      {view === "year" && (
+        <div className="year-view">
+          {months.map((month, idx) => (
             <div
-              className="event-item"
-              key={index}
-              style={{ borderLeft: `5px solid ${event.color}` }}
+              key={idx}
+              className="year-month"
+              onClick={() => {
+                setSelectedMonth(idx);
+                setView("month");
+              }}
             >
-              <div className="event-header">
-                <h3>{event.course}</h3>
-                <button
-                  className="remove-event"
-                  onClick={() => removeEvent(index)}
-                  title="Remove event"
-                >
-                  ×
-                </button>
+              <h3>{month}</h3>
+              <div className="mini-month-grid">
+                {Array.from({ length: 7 }, (_, i) => (
+                  <div key={i} className="mini-month-header">
+                    {daysOfWeek[i].charAt(0)}
+                  </div>
+                ))}
+
+                {getDaysInMonth(selectedYear, idx).map((date, dateIdx) => (
+                  <div
+                    key={dateIdx}
+                    className={`mini-month-cell ${
+                      date && isToday(date) ? "today" : ""
+                    } ${!date ? "empty-cell" : ""}`}
+                  >
+                    {date && date.getDate()}
+                    {date && getEventsForDate(date).length > 0 && (
+                      <div className="mini-month-indicator"></div>
+                    )}
+                  </div>
+                ))}
               </div>
-              <p className="event-time">
-                {event.day}, {event.startTime} - {event.endTime}
-              </p>
-              {event.description && (
-                <p className="event-description">{event.description}</p>
-              )}
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {/* List View */}
+      {view === "list" && (
+        <div className="list-view">
+          {schedule.length === 0 ? (
+            <p>No events scheduled yet.</p>
+          ) : (
+            <>
+              <div className="list-filters">
+                <input
+                  type="text"
+                  placeholder="Search events..."
+                  onChange={(e) => {
+                    // You can implement search functionality here
+                  }}
+                />
+              </div>
+
+              {schedule
+                .sort((a, b) => new Date(a.date) - new Date(b.date))
+                .map((event) => (
+                  <div
+                    className="event-item"
+                    key={event.id}
+                    style={{ borderLeft: `5px solid ${event.color}` }}
+                  >
+                    <div className="event-header">
+                      <h3>{event.course}</h3>
+                      <button
+                        className="remove-event"
+                        onClick={() => removeEvent(event.id)}
+                        title="Remove event"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <p className="event-date">
+                      {formatDate(new Date(event.date))}
+                      {event.recurring && ` (Repeats ${event.recurrenceType})`}
+                    </p>
+                    <p className="event-time">
+                      {formatTime(event.startTime)} -{" "}
+                      {formatTime(event.endTime)}
+                    </p>
+                    {event.description && (
+                      <p className="event-description">{event.description}</p>
+                    )}
+                  </div>
+                ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
