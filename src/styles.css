@@ -610,3 +610,12 @@ h3 {
     flex: 1 1 calc(50% - 5px);
   }
 }
+
+.loading-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px;
+  font-weight: bold;
+  color: #2196f3;
+}
