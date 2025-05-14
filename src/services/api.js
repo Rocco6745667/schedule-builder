@@ -1,20 +1,20 @@
 import axios from "axios";
 
-const API_URL = "http://localhost:8080/api/events";
+const API_BASE_URL = "http://localhost:8080/api/events";
 
-export const fetchEvents = async () => {
+export const fetchSchedule = async () => {
   try {
-    const response = await axios.get(API_URL);
+    const response = await axios.get(`${API_BASE_URL}/schedule`);
     return response.data;
   } catch (error) {
-    console.error("Error fetching events:", error);
+    console.error("Error fetching schedule:", error);
     throw error;
   }
 };
 
-export const createEvent = async (event) => {
+export const createEvent = async (eventData) => {
   try {
-    const response = await axios.post(API_URL, event);
+    const response = await axios.post(`${API_BASE_URL}/schedule`, eventData);
     return response.data;
   } catch (error) {
     console.error("Error creating event:", error);
@@ -22,9 +22,22 @@ export const createEvent = async (event) => {
   }
 };
 
-export const updateEvent = async (id, event) => {
+export const deleteEvent = async (eventId) => {
   try {
-    const response = await axios.put(`${API_URL}/${id}`, event);
+    const response = await axios.delete(`${API_BASE_URL}/schedule/${eventId}`);
+    return response.data;
+  } catch (error) {
+    console.error("Error deleting event:", error);
+    throw error;
+  }
+};
+
+export const updateEvent = async (eventId, updatedEventData) => {
+  try {
+    const response = await axios.put(
+      `${API_BASE_URL}/schedule/${eventId}`,
+      updatedEventData
+    );
     return response.data;
   } catch (error) {
     console.error("Error updating event:", error);
@@ -32,11 +45,12 @@ export const updateEvent = async (id, event) => {
   }
 };
 
-export const deleteEvent = async (id) => {
+export const clearAllEvents = async () => {
   try {
-    await axios.delete(`${API_URL}/${id}`);
+    const response = await axios.delete(`${API_BASE_URL}/schedule`);
+    return response.data;
   } catch (error) {
-    console.error("Error deleting event:", error);
+    console.error("Error clearing schedule:", error);
     throw error;
   }
 };
