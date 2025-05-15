@@ -616,6 +616,48 @@ h3 {
   justify-content: center;
   align-items: center;
   padding: 10px;
+  margin: 10px 0;
   font-weight: bold;
   color: #2196f3;
+  background-color: rgba(33, 150, 243, 0.1);
+  border-radius: 4px;
+}
+
+.debug-info {
+  padding: 10px;
+  margin: 10px 0;
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  font-family: monospace;
+  white-space: pre-wrap;
+}
+
+.debug-panel {
+  margin-top: 20px;
+  border-top: 1px solid #ddd;
+  padding-top: 20px;
+}
+
+.debug-toggle {
+  background-color: #f8f9fa;
+  border: 1px solid #ddd;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.debug-content {
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: auto;
+  max-height: 300px;
+}
+
+.debug-content pre {
+  white-space: pre-wrap;
+  font-family: monospace;
+  font-size: 12px;
 }

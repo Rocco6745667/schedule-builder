@@ -1,5 +1,11 @@
 import React, { useEffect, useState } from "react";
 import "./styles.css";
+import {
+  fetchSchedule,
+  createEvent,
+  deleteEvent,
+  clearAllEvents,
+} from "./services/api";
 
 // Hours for the daily view
 const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`);
@@ -57,29 +63,54 @@ export default function ScheduleBuilder() {
     recurrenceType: "weekly", // weekly, monthly, yearly
   });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [view, setView] = useState("week"); // week, month, year, list
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [debugInfo, setDebugInfo] = useState("");
 
-  // Load from localStorage
+  // Load from API instead of localStorage
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("schedule");
-      if (saved) setSchedule(JSON.parse(saved));
-    } catch (err) {
-      console.error("Error loading from localStorage:", err);
-    }
+    const getScheduleData = async () => {
+      try {
+        setLoading(true);
+        setError(""); // Clear any previous errors
+
+        console.log("Fetching schedule from API...");
+        const data = await fetchSchedule();
+        console.log(`Received ${data.length} events from API`);
+
+        // Map MongoDB data to ensure compatibility with existing code
+        const formattedData = data.map((event) => ({
+          ...event,
+          id: event._id, // Ensure both id and _id are available
+        }));
+
+        setSchedule(formattedData);
+      } catch (err) {
+        console.error("Error loading from API:", err);
+        setError(`Failed to load schedule data: ${err.message}`);
+
+        // Fallback to localStorage if API fails
+        try {
+          console.log("Falling back to localStorage...");
+          const saved = localStorage.getItem("schedule");
+          if (saved) {
+            const localData = JSON.parse(saved);
+            console.log(`Loaded ${localData.length} events from localStorage`);
+            setSchedule(localData);
+          }
+        } catch (localErr) {
+          console.error("Error loading from localStorage:", localErr);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    getScheduleData();
   }, []);
-
-  // Save to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem("schedule", JSON.stringify(schedule));
-    } catch (err) {
-      console.error("Error saving to localStorage:", err);
-    }
-  }, [schedule]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -110,18 +141,8 @@ export default function ScheduleBuilder() {
     return false;
   };
 
-  const addToSchedule = () => {
-    const {
-      course,
-      day,
-      date,
-      startTime,
-      endTime,
-      description,
-      color,
-      recurring,
-      recurrenceType,
-    } = formData;
+  const addToSchedule = async () => {
+    const { course, date, startTime, endTime } = formData;
 
     if (!course || !date || !startTime || !endTime) {
       setError("Please fill out all required fields.");
@@ -134,10 +155,7 @@ export default function ScheduleBuilder() {
     }
 
     // Check for conflicts
-    const eventDate = new Date(date);
     const conflict = schedule.some((item) => {
-      const itemDate = new Date(item.date);
-
       // Check if dates match (considering recurrence)
       const dateMatches =
         datesMatch(
@@ -165,45 +183,74 @@ export default function ScheduleBuilder() {
         new Date(date).getDay() === 0 ? 6 : new Date(date).getDay() - 1
       ];
 
-    setSchedule((prev) => [
-      ...prev,
-      {
+    try {
+      setLoading(true);
+
+      // Create the new event object
+      const newEvent = {
         ...formData,
         day: dayOfWeek,
-        id: Date.now(), // Add a unique ID for each event
-      },
-    ]);
+      };
 
-    // Reset form with a random color
-    setFormData({
-      course: "",
-      day: dayOfWeek,
-      date: date,
-      startTime: "",
-      endTime: "",
-      description: "",
-      color: colorOptions[Math.floor(Math.random() * colorOptions.length)],
-      recurring: false,
-      recurrenceType: "weekly",
-    });
-    setError("");
+      // Send to API and get the saved event with MongoDB _id
+      const savedEvent = await createEvent(newEvent);
+
+      // Update the local state with the saved event
+      setSchedule((prev) => [...prev, savedEvent]);
+
+      // Reset form with a random color
+      setFormData({
+        course: "",
+        day: dayOfWeek,
+        date: date,
+        startTime: "",
+        endTime: "",
+        description: "",
+        color: colorOptions[Math.floor(Math.random() * colorOptions.length)],
+        recurring: false,
+        recurrenceType: "weekly",
+      });
+      setError("");
+    } catch (err) {
+      console.error("Error adding to schedule:", err);
+      setError("Failed to add event. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Clear the schedule
-  const clearSchedule = () => {
+  const clearSchedule = async () => {
     if (window.confirm("Are you sure you want to clear the entire schedule?")) {
-      setSchedule([]);
       try {
-        localStorage.removeItem("schedule");
+        setLoading(true);
+        await clearAllEvents();
+        setSchedule([]);
       } catch (err) {
-        console.error("Error clearing localStorage:", err);
+        console.error("Error clearing schedule:", err);
+        setError("Failed to clear schedule. Please try again.");
+      } finally {
+        setLoading(false);
       }
     }
   };
 
   // Remove a specific event
-  const removeEvent = (id) => {
-    setSchedule((prev) => prev.filter((event) => event.id !== id));
+  const removeEvent = async (id) => {
+    try {
+      setLoading(true);
+      // Use the MongoDB _id if available, otherwise use the id
+      const eventId = id.toString().includes("ObjectId") ? id : id;
+      await deleteEvent(eventId);
+      setSchedule((prev) =>
+        prev.filter((event) => event._id !== id && event.id !== id)
+      );
+    } catch (err) {
+      console.error("Error removing event:", err);
+      setError("Failed to remove event. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Helper function to check if an event should be displayed in a time slot
@@ -358,6 +405,8 @@ export default function ScheduleBuilder() {
     <div className="schedule-builder">
       <h1>Schedule Builder</h1>
 
+      {loading && <div className="loading-indicator">Loading...</div>}
+
       <div className="view-controls">
         <button
           className={view === "week" ? "active" : ""}
@@ -507,6 +556,7 @@ export default function ScheduleBuilder() {
       </div>
 
       {error && <div className="error">{error}</div>}
+      {debugInfo && <div className="debug-info">{debugInfo}</div>}
 
       <h2>{view.charAt(0).toUpperCase() + view.slice(1)} View</h2>
 
@@ -699,35 +749,41 @@ export default function ScheduleBuilder() {
 
               {schedule
                 .sort((a, b) => new Date(a.date) - new Date(b.date))
-                .map((event) => (
-                  <div
-                    className="event-item"
-                    key={event.id}
-                    style={{ borderLeft: `5px solid ${event.color}` }}
-                  >
-                    <div className="event-header">
-                      <h3>{event.course}</h3>
-                      <button
-                        className="remove-event"
-                        onClick={() => removeEvent(event.id)}
-                        title="Remove event"
-                      >
-                        ×
-                      </button>
+                .map((event) => {
+                  // Log each event for debugging
+                  console.log("Rendering event in list view:", event);
+
+                  return (
+                    <div
+                      className="event-item"
+                      key={event._id || event.id}
+                      style={{ borderLeft: `5px solid ${event.color}` }}
+                    >
+                      <div className="event-header">
+                        <h3>{event.course}</h3>
+                        <button
+                          className="remove-event"
+                          onClick={() => removeEvent(event._id || event.id)}
+                          title="Remove event"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <p className="event-date">
+                        {formatDate(new Date(event.date))}
+                        {event.recurring &&
+                          ` (Repeats ${event.recurrenceType})`}
+                      </p>
+                      <p className="event-time">
+                        {formatTime(event.startTime)} -{" "}
+                        {formatTime(event.endTime)}
+                      </p>
+                      {event.description && (
+                        <p className="event-description">{event.description}</p>
+                      )}
                     </div>
-                    <p className="event-date">
-                      {formatDate(new Date(event.date))}
-                      {event.recurring && ` (Repeats ${event.recurrenceType})`}
-                    </p>
-                    <p className="event-time">
-                      {formatTime(event.startTime)} -{" "}
-                      {formatTime(event.endTime)}
-                    </p>
-                    {event.description && (
-                      <p className="event-description">{event.description}</p>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
             </>
           )}
         </div>
