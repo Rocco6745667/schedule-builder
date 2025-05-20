@@ -2,6 +2,14 @@ import axios from "axios";
 
 const API_BASE_URL = "http://localhost:5000/api";
 
+// Create an axios instance
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
 // Helper function to normalize event data from API
 const normalizeEvent = (event) => {
   return {
@@ -16,7 +24,7 @@ const normalizeEvent = (event) => {
 };
 
 // Add request interceptor for logging
-api.interceptors.request.use(
+axios.interceptors.request.use(
   (config) => {
     console.log(`API Request: ${config.method.toUpperCase()} ${config.url}`);
     return config;
@@ -28,7 +36,7 @@ api.interceptors.request.use(
 );
 
 // Add response interceptor for logging
-api.interceptors.response.use(
+axios.interceptors.response.use(
   (response) => {
     console.log(`API Response: ${response.status} from ${response.config.url}`);
     return response;
@@ -43,54 +51,98 @@ api.interceptors.response.use(
   }
 );
 
+// Mock API using localStorage for testing
+const STORAGE_KEY = "schedule";
+
+// Helper function to get data from localStorage
+const getStoredData = () => {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  return saved ? JSON.parse(saved) : [];
+};
+
+// Helper function to save data to localStorage
+const saveData = (data) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+};
+
+// Fetch all events
 export const fetchSchedule = async () => {
   try {
-    console.log("Fetching schedule from API...");
-    const response = await axios.get(`${API_BASE_URL}/schedule`);
-    console.log("Raw API response:", response.data);
+    // For a real API, you would use fetch here
+    // const response = await fetch('your-api-url/events');
+    // return await response.json();
 
-    // Normalize all events to ensure consistent format
-    const normalizedEvents = response.data.map(normalizeEvent);
-    console.log("Normalized events:", normalizedEvents);
-
-    return normalizedEvents;
+    // For now, use localStorage
+    return getStoredData();
   } catch (error) {
     console.error("Error fetching schedule:", error);
     throw error;
   }
 };
 
+// Create a new event
 export const createEvent = async (eventData) => {
   try {
-    console.log("Creating event with data:", eventData);
-    const response = await axios.post(`${API_BASE_URL}/schedule`, eventData);
-    console.log("Create event response:", response.data);
+    // For a real API, you would use fetch here
+    // const response = await fetch('your-api-url/events', {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify(eventData)
+    // });
+    // return await response.json();
 
-    // Return normalized event
-    return normalizeEvent(response.data);
+    // For now, use localStorage
+    const events = getStoredData();
+    const newEvent = {
+      ...eventData,
+      _id: Date.now().toString(),
+      id: Date.now().toString(),
+    };
+    events.push(newEvent);
+    saveData(events);
+    return newEvent;
   } catch (error) {
     console.error("Error creating event:", error);
     throw error;
   }
 };
 
+// Delete an event
 export const deleteEvent = async (eventId) => {
   try {
-    console.log(`Deleting event with ID: ${eventId}`);
-    const response = await axios.delete(`${API_BASE_URL}/schedule/${eventId}`);
-    return response.data;
+    // For a real API, you would use fetch here
+    // const response = await fetch(`your-api-url/events/${eventId}`, {
+    //   method: 'DELETE'
+    // });
+    // return await response.json();
+
+    // For now, use localStorage
+    const events = getStoredData();
+    const updatedEvents = events.filter(
+      (event) => event._id !== eventId && event.id !== eventId
+    );
+    saveData(updatedEvents);
+    return { success: true };
   } catch (error) {
     console.error("Error deleting event:", error);
     throw error;
   }
 };
 
+// Clear all events
 export const clearAllEvents = async () => {
   try {
-    const response = await axios.delete(`${API_BASE_URL}/schedule`);
-    return response.data;
+    // For a real API, you would use fetch here
+    // const response = await fetch('your-api-url/events', {
+    //   method: 'DELETE'
+    // });
+    // return await response.json();
+
+    // For now, use localStorage
+    localStorage.removeItem(STORAGE_KEY);
+    return { success: true };
   } catch (error) {
-    console.error("Error clearing schedule:", error);
+    console.error("Error clearing events:", error);
     throw error;
   }
 };
@@ -98,6 +150,7 @@ export const clearAllEvents = async () => {
 // Test function to verify API connection
 export const testApiConnection = async () => {
   try {
+    // Use the api instance we created at the top of the file
     const response = await api.get("/schedule/test");
     return response.data;
   } catch (error) {
