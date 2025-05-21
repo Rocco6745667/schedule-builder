@@ -158,3 +158,54 @@ export const testApiConnection = async () => {
     throw error;
   }
 };
+
+// Search events based on query
+export const searchEvents = async (query) => {
+  try {
+    // For a real API, you would use fetch here
+    // const response = await api.get(`/events/search?q=${encodeURIComponent(query)}`);
+    // return response.data;
+
+    // For now, use localStorage and filter events locally
+    const events = getStoredData();
+    const searchTerm = query.toLowerCase();
+
+    // Filter events based on various properties
+    const filteredEvents = events.filter((event) => {
+      // Search in title
+      if (event.title && event.title.toLowerCase().includes(searchTerm)) {
+        return true;
+      }
+
+      // Search in description
+      if (
+        event.description &&
+        event.description.toLowerCase().includes(searchTerm)
+      ) {
+        return true;
+      }
+
+      // Search in location
+      if (event.location && event.location.toLowerCase().includes(searchTerm)) {
+        return true;
+      }
+
+      // Search in date
+      if (event.date && event.date.includes(searchTerm)) {
+        return true;
+      }
+
+      // Search in time
+      if (event.time && event.time.toLowerCase().includes(searchTerm)) {
+        return true;
+      }
+
+      return false;
+    });
+
+    return filteredEvents.map(normalizeEvent);
+  } catch (error) {
+    console.error("Error searching events:", error);
+    throw error;
+  }
+};
