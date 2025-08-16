@@ -61,6 +61,8 @@ export default function ScheduleBuilder() {
     color: colorOptions[0],
     recurring: false,
     recurrenceType: "weekly", // weekly, monthly, yearly
+    repeatWeeks: 1, // Number of weeks to repeat (for weekly recurrence)
+    repeatLimited: false, // Whether to limit the number of repetitions
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -124,13 +126,23 @@ export default function ScheduleBuilder() {
   const timesOverlap = (start1, end1, start2, end2) =>
     !(end1 <= start2 || start1 >= end2);
 
-  const datesMatch = (date1, date2, recurrenceType) => {
+  const datesMatch = (date1, date2, recurrenceType, repeatWeeks = null, repeatLimited = false) => {
     const d1 = new Date(date1);
     const d2 = new Date(date2);
 
     if (d1.toDateString() === d2.toDateString()) return true;
 
     if (recurrenceType === "weekly") {
+      // If it's a limited recurring event, check if target date is within the repeat range
+      if (repeatLimited && repeatWeeks) {
+        const daysDifference = Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
+        const weeksDifference = Math.floor(daysDifference / 7);
+        
+        // Only match if it's the same day of week and within the repeat range
+        return d1.getDay() === d2.getDay() && 
+               daysDifference >= 0 && 
+               weeksDifference < repeatWeeks;
+      }
       return d1.getDay() === d2.getDay();
     } else if (recurrenceType === "monthly") {
       return d1.getDate() === d2.getDate();
@@ -161,9 +173,17 @@ export default function ScheduleBuilder() {
         datesMatch(
           date,
           item.date,
-          item.recurring ? item.recurrenceType : null
+          item.recurring ? item.recurrenceType : null,
+          item.repeatWeeks,
+          item.repeatLimited
         ) ||
-        (item.recurring && datesMatch(date, item.date, item.recurrenceType));
+        (item.recurring && datesMatch(
+          date, 
+          item.date, 
+          item.recurrenceType,
+          item.repeatWeeks,
+          item.repeatLimited
+        ));
 
       // If dates match, check for time overlap
       return (
@@ -209,6 +229,8 @@ export default function ScheduleBuilder() {
         color: colorOptions[Math.floor(Math.random() * colorOptions.length)],
         recurring: false,
         recurrenceType: "weekly",
+        repeatWeeks: 1,
+        repeatLimited: false,
       });
       setError("");
     } catch (err) {
@@ -274,7 +296,9 @@ export default function ScheduleBuilder() {
     const dateMatches = datesMatch(
       eventDate.toISOString().split("T")[0],
       targetDate.toISOString().split("T")[0],
-      event.recurring ? event.recurrenceType : null
+      event.recurring ? event.recurrenceType : null,
+      event.repeatWeeks,
+      event.repeatLimited
     );
 
     return dateMatches && eventStart <= hourNum && eventEnd > hourNum;
@@ -289,7 +313,9 @@ export default function ScheduleBuilder() {
         return datesMatch(
           eventDate.toISOString().split("T")[0],
           date.toISOString().split("T")[0],
-          event.recurrenceType
+          event.recurrenceType,
+          event.repeatWeeks,
+          event.repeatLimited
         );
       } else {
         return eventDate.toDateString() === date.toDateString();
@@ -530,19 +556,54 @@ export default function ScheduleBuilder() {
         </div>
 
         {formData.recurring && (
-          <div className="form-group">
-            <label htmlFor="recurrenceType">Recurrence</label>
-            <select
-              id="recurrenceType"
-              name="recurrenceType"
-              value={formData.recurrenceType}
-              onChange={handleChange}
-            >
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="yearly">Yearly</option>
-            </select>
-          </div>
+          <>
+            <div className="form-group">
+              <label htmlFor="recurrenceType">Recurrence</label>
+              <select
+                id="recurrenceType"
+                name="recurrenceType"
+                value={formData.recurrenceType}
+                onChange={handleChange}
+              >
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </div>
+            
+            {formData.recurrenceType === "weekly" && (
+              <>
+                <div className="form-group checkbox-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      name="repeatLimited"
+                      checked={formData.repeatLimited}
+                      onChange={handleChange}
+                    />
+                    Limit repetitions to specific number of weeks
+                  </label>
+                </div>
+                
+                {formData.repeatLimited && (
+                  <div className="form-group">
+                    <label htmlFor="repeatWeeks">Number of weeks to repeat</label>
+                    <input
+                      type="number"
+                      id="repeatWeeks"
+                      name="repeatWeeks"
+                      value={formData.repeatWeeks}
+                      onChange={handleChange}
+                      min="1"
+                      max="52"
+                      placeholder="Enter number of weeks"
+                    />
+                    <small>Event will repeat for {formData.repeatWeeks} week{formData.repeatWeeks !== 1 ? 's' : ''} (including the original)</small>
+                  </div>
+                )}
+              </>
+            )}
+          </>
         )}
 
         <div className="form-buttons">
@@ -771,8 +832,11 @@ export default function ScheduleBuilder() {
                       </div>
                       <p className="event-date">
                         {formatDate(new Date(event.date))}
-                        {event.recurring &&
-                          ` (Repeats ${event.recurrenceType})`}
+                        {event.recurring && (
+                          event.repeatLimited && event.recurrenceType === "weekly"
+                            ? ` (Repeats ${event.recurrenceType} for ${event.repeatWeeks} weeks)`
+                            : ` (Repeats ${event.recurrenceType})`
+                        )}
                       </p>
                       <p className="event-time">
                         {formatTime(event.startTime)} -{" "}
