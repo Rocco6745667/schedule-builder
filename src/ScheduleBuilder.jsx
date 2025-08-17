@@ -70,7 +70,6 @@ export default function ScheduleBuilder() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [debugInfo, setDebugInfo] = useState("");
 
   // Load from API instead of localStorage
   useEffect(() => {
@@ -617,7 +616,6 @@ export default function ScheduleBuilder() {
       </div>
 
       {error && <div className="error">{error}</div>}
-      {debugInfo && <div className="debug-info">{debugInfo}</div>}
 
       <h2>{view.charAt(0).toUpperCase() + view.slice(1)} View</h2>
 
