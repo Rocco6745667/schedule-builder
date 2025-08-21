@@ -542,6 +542,38 @@ h3 {
   border-color: transparent rgba(255, 255, 255, 0.7) transparent transparent;
 }
 
+/* Multiday recurring events - special styling */
+.calendar-event.multiday.recurring {
+  border-left: 4px solid rgba(255, 255, 255, 0.9);
+  border-right: 2px solid rgba(255, 255, 255, 0.7);
+  background: linear-gradient(135deg, var(--primary-color), var(--accent-color)) !important;
+}
+
+.calendar-event.multiday.recurring::after {
+  content: '↻';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: bold;
+}
+
+/* All-day recurring events */
+.calendar-event.all-day.recurring {
+  background: linear-gradient(135deg, var(--accent-color), #f97316) !important;
+}
+
+.calendar-event.all-day.recurring::after {
+  content: '↻';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: bold;
+}
+
 /* Month View */
 .month-view {
   background: var(--bg-primary);

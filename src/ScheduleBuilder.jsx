@@ -132,30 +132,92 @@ export default function ScheduleBuilder() {
     const d1 = new Date(date1);
     const d2 = new Date(date2);
 
-    // For multiday events, check if the target date falls within the event's date range
-    if (endDate1) {
-      const e1 = new Date(endDate1);
-      if (d2 >= d1 && d2 <= e1) return true;
+    // Helper function to check if a date falls within a multiday range
+    const isDateInMultidayRange = (startDate, endDate, targetDate) => {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const target = new Date(targetDate);
+      return target >= start && target <= end;
+    };
+
+    // For non-recurring multiday events, check if target date falls within the range
+    if (endDate1 && !recurrenceType) {
+      return isDateInMultidayRange(d1, endDate1, d2);
     }
 
-    if (d1.toDateString() === d2.toDateString()) return true;
+    // For single-day non-recurring events
+    if (!recurrenceType && !endDate1) {
+      return d1.toDateString() === d2.toDateString();
+    }
 
+    // For recurring events
     if (recurrenceType === "weekly") {
+      const daysDifference = Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
+      const weeksDifference = Math.floor(daysDifference / 7);
+      
       // If it's a limited recurring event, check if target date is within the repeat range
-      if (repeatLimited && repeatWeeks) {
-        const daysDifference = Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
-        const weeksDifference = Math.floor(daysDifference / 7);
-        
-        // Only match if it's the same day of week and within the repeat range
-        return d1.getDay() === d2.getDay() && 
-               daysDifference >= 0 && 
-               weeksDifference < repeatWeeks;
+      if (repeatLimited && repeatWeeks && weeksDifference >= repeatWeeks) {
+        return false;
       }
-      return d1.getDay() === d2.getDay();
+
+      // For multiday recurring events
+      if (endDate1) {
+        const eventDuration = Math.floor((new Date(endDate1) - d1) / (1000 * 60 * 60 * 24));
+        
+        // Check each weekly occurrence
+        for (let week = 0; !repeatLimited || week < repeatWeeks; week++) {
+          const occurrenceStart = new Date(d1);
+          occurrenceStart.setDate(d1.getDate() + (week * 7));
+          
+          const occurrenceEnd = new Date(occurrenceStart);
+          occurrenceEnd.setDate(occurrenceStart.getDate() + eventDuration);
+          
+          if (isDateInMultidayRange(occurrenceStart, occurrenceEnd, d2)) {
+            return true;
+          }
+          
+          // If we've gone past the target date and it's unlimited repetition, stop checking
+          if (!repeatLimited && occurrenceStart > d2) {
+            break;
+          }
+        }
+        return false;
+      } else {
+        // Single-day recurring events
+        if (daysDifference < 0) return false;
+        return d1.getDay() === d2.getDay();
+      }
     } else if (recurrenceType === "monthly") {
-      return d1.getDate() === d2.getDate();
+      // For multiday monthly recurring events
+      if (endDate1) {
+        const eventDuration = Math.floor((new Date(endDate1) - d1) / (1000 * 60 * 60 * 24));
+        const targetMonth = d2.getMonth();
+        const targetYear = d2.getFullYear();
+        
+        // Check if target date falls within this month's occurrence
+        const monthlyStart = new Date(targetYear, targetMonth, d1.getDate());
+        const monthlyEnd = new Date(monthlyStart);
+        monthlyEnd.setDate(monthlyStart.getDate() + eventDuration);
+        
+        return isDateInMultidayRange(monthlyStart, monthlyEnd, d2);
+      } else {
+        return d1.getDate() === d2.getDate();
+      }
     } else if (recurrenceType === "yearly") {
-      return d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+      // For multiday yearly recurring events
+      if (endDate1) {
+        const eventDuration = Math.floor((new Date(endDate1) - d1) / (1000 * 60 * 60 * 24));
+        const targetYear = d2.getFullYear();
+        
+        // Check if target date falls within this year's occurrence
+        const yearlyStart = new Date(targetYear, d1.getMonth(), d1.getDate());
+        const yearlyEnd = new Date(yearlyStart);
+        yearlyEnd.setDate(yearlyStart.getDate() + eventDuration);
+        
+        return isDateInMultidayRange(yearlyStart, yearlyEnd, d2);
+      } else {
+        return d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+      }
     }
 
     return false;
@@ -326,25 +388,26 @@ export default function ScheduleBuilder() {
   // Helper function to check if an event should be displayed in a time slot
   const shouldDisplayEvent = (event, hour, date) => {
     const hourNum = parseInt(hour.split(":")[0], 10);
+    const targetDate = date || selectedDate;
+    
+    // Check if this date matches the event (considering multiday and recurring patterns)
+    const dateMatches = datesMatch(
+      event.date,
+      targetDate.toISOString().split("T")[0],
+      event.recurring ? event.recurrenceType : null,
+      event.repeatWeeks,
+      event.repeatLimited,
+      event.endDate
+    );
+
+    if (!dateMatches) return false;
     
     // For all-day events, only show in the first hour (0:00)
     if (event.allDay) {
-      const isFirstHour = hourNum === 0;
-      const eventDate = new Date(event.date);
-      const targetDate = date || selectedDate;
-
-      const dateMatches = datesMatch(
-        eventDate.toISOString().split("T")[0],
-        targetDate.toISOString().split("T")[0],
-        event.recurring ? event.recurrenceType : null,
-        event.repeatWeeks,
-        event.repeatLimited,
-        event.endDate
-      );
-
-      return dateMatches && isFirstHour;
+      return hourNum === 0;
     }
 
+    // For timed events, check if the hour falls within the event time range
     const eventStartHour = parseInt(event.startTime.split(":")[0], 10);
     const eventEndHour = parseInt(event.endTime.split(":")[0], 10);
 
@@ -356,20 +419,7 @@ export default function ScheduleBuilder() {
     const eventStart = eventStartHour + eventStartMinutes / 60;
     const eventEnd = eventEndHour + eventEndMinutes / 60;
 
-    // Check if the event occurs on this date (considering recurrence)
-    const eventDate = new Date(event.date);
-    const targetDate = date || selectedDate;
-
-    const dateMatches = datesMatch(
-      eventDate.toISOString().split("T")[0],
-      targetDate.toISOString().split("T")[0],
-      event.recurring ? event.recurrenceType : null,
-      event.repeatWeeks,
-      event.repeatLimited,
-      event.endDate
-    );
-
-    return dateMatches && eventStart <= hourNum && eventEnd > hourNum;
+    return eventStart <= hourNum && eventEnd > hourNum;
   };
 
   // Get events for a specific date
@@ -666,68 +716,76 @@ export default function ScheduleBuilder() {
           </select>
         </div>
 
-        <div className="form-group checkbox-group">
-          <label>
-            <input
-              type="checkbox"
-              name="recurring"
-              checked={formData.recurring}
-              onChange={handleChange}
-            />
-            Recurring Event
-          </label>
-        </div>
-
-        {formData.recurring && (
-          <>
-            <div className="form-group">
-              <label htmlFor="recurrenceType">Recurrence</label>
-              <select
-                id="recurrenceType"
-                name="recurrenceType"
-                value={formData.recurrenceType}
+          <div className="form-group checkbox-group">
+            <label>
+              <input
+                type="checkbox"
+                name="recurring"
+                checked={formData.recurring}
                 onChange={handleChange}
-              >
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="yearly">Yearly</option>
-              </select>
-            </div>
-            
-            {formData.recurrenceType === "weekly" && (
-              <>
-                <div className="form-group checkbox-group">
-                  <label>
-                    <input
-                      type="checkbox"
-                      name="repeatLimited"
-                      checked={formData.repeatLimited}
-                      onChange={handleChange}
-                    />
-                    Limit repetitions to specific number of weeks
-                  </label>
-                </div>
-                
-                {formData.repeatLimited && (
-                  <div className="form-group">
-                    <label htmlFor="repeatWeeks">Number of weeks to repeat</label>
-                    <input
-                      type="number"
-                      id="repeatWeeks"
-                      name="repeatWeeks"
-                      value={formData.repeatWeeks}
-                      onChange={handleChange}
-                      min="1"
-                      max="52"
-                      placeholder="Enter number of weeks"
-                    />
-                    <small>Event will repeat for {formData.repeatWeeks} week{formData.repeatWeeks !== 1 ? 's' : ''} (including the original)</small>
-                  </div>
+              />
+              Recurring Event
+            </label>
+          </div>
+
+          {formData.recurring && (
+            <>
+              <div className="form-group">
+                <label htmlFor="recurrenceType">Recurrence Pattern</label>
+                <select
+                  id="recurrenceType"
+                  name="recurrenceType"
+                  value={formData.recurrenceType}
+                  onChange={handleChange}
+                >
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+                {formData.isMultiDay && formData.recurrenceType === "weekly" && (
+                  <small>Multiday event will repeat weekly (entire duration each week)</small>
                 )}
-              </>
-            )}
-          </>
-        )}
+              </div>
+              
+              {formData.recurrenceType === "weekly" && (
+                <>
+                  <div className="form-group checkbox-group">
+                    <label>
+                      <input
+                        type="checkbox"
+                        name="repeatLimited"
+                        checked={formData.repeatLimited}
+                        onChange={handleChange}
+                      />
+                      Limit repetitions to specific number of weeks
+                    </label>
+                  </div>
+                  
+                  {formData.repeatLimited && (
+                    <div className="form-group">
+                      <label htmlFor="repeatWeeks">Number of weeks to repeat</label>
+                      <input
+                        type="number"
+                        id="repeatWeeks"
+                        name="repeatWeeks"
+                        value={formData.repeatWeeks}
+                        onChange={handleChange}
+                        min="1"
+                        max="52"
+                        placeholder="Enter number of weeks"
+                      />
+                      <small>
+                        {formData.isMultiDay 
+                          ? `Multiday event will repeat for ${formData.repeatWeeks} week${formData.repeatWeeks !== 1 ? 's' : ''} (${formData.endDate ? Math.ceil((new Date(formData.endDate) - new Date(formData.date)) / (1000 * 60 * 60 * 24)) + 1 : 'X'} days each week)`
+                          : `Event will repeat for ${formData.repeatWeeks} week${formData.repeatWeeks !== 1 ? 's' : ''} (including the original)`
+                        }
+                      </small>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
 
           <div className="form-buttons">
             <button onClick={addToSchedule} className="btn btn-primary">
@@ -802,7 +860,7 @@ export default function ScheduleBuilder() {
                         .filter((item) => shouldDisplayEvent(item, hour, date))
                         .map((item, index) => (
                           <div
-                            className={`calendar-event ${item.allDay ? 'all-day' : ''} ${item.isMultiDay ? 'multiday' : ''}`}
+                            className={`calendar-event ${item.allDay ? 'all-day' : ''} ${item.isMultiDay ? 'multiday' : ''} ${item.recurring ? 'recurring' : ''}`}
                             key={`${item.id}-${index}`}
                             style={{ backgroundColor: item.color }}
                             title={`${item.course}${
@@ -970,12 +1028,17 @@ export default function ScheduleBuilder() {
                           ? `${formatDate(new Date(event.date))} - ${formatDate(new Date(event.endDate))}`
                           : formatDate(new Date(event.date))
                         }
-                        {event.recurring && (
+                        {event.recurring && event.isMultiDay && (
+                          event.repeatLimited && event.recurrenceType === "weekly"
+                            ? ` (Multiday event repeats ${event.recurrenceType} for ${event.repeatWeeks} weeks)`
+                            : ` (Multiday event repeats ${event.recurrenceType})`
+                        )}
+                        {event.recurring && !event.isMultiDay && (
                           event.repeatLimited && event.recurrenceType === "weekly"
                             ? ` (Repeats ${event.recurrenceType} for ${event.repeatWeeks} weeks)`
                             : ` (Repeats ${event.recurrenceType})`
                         )}
-                        {event.isMultiDay && " (Multi-day)"}
+                        {event.isMultiDay && !event.recurring && " (Multi-day)"}
                       </p>
                       <p className="event-time">
                         {event.allDay 
