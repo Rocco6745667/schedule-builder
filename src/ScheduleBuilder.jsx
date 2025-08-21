@@ -505,9 +505,12 @@ export default function ScheduleBuilder() {
 
   return (
     <div className="schedule-builder">
-      <h1>Schedule Builder</h1>
+      <div className="header-section">
+        <h1 className="app-title">Schedule Builder</h1>
+        <p className="app-subtitle">Organize your time with professional scheduling</p>
+      </div>
 
-      {loading && <div className="loading-indicator">Loading...</div>}
+      {loading && <div className="loading-indicator">Processing...</div>}
 
       <div className="view-controls">
         <button
@@ -536,19 +539,20 @@ export default function ScheduleBuilder() {
         </button>
       </div>
 
-      <div className="form">
-        <div className="form-group">
-          <label htmlFor="course">Event Name*</label>
-          <input
-            type="text"
-            id="course"
-            name="course"
-            placeholder="Event Name"
-            value={formData.course}
-            onChange={handleChange}
-            required
-          />
-        </div>
+      <div className="form-container">
+        <div className="form">
+          <div className="form-group">
+            <label htmlFor="course">Event Name*</label>
+            <input
+              type="text"
+              id="course"
+              name="course"
+              placeholder="Enter event name"
+              value={formData.course}
+              onChange={handleChange}
+              required
+            />
+          </div>
 
         <div className="form-group">
           <label htmlFor="date">{formData.isMultiDay ? 'Start Date*' : 'Date*'}</label>
@@ -629,17 +633,17 @@ export default function ScheduleBuilder() {
           </>
         )}
 
-        <div className="form-group">
-          <label htmlFor="description">Description</label>
-          <textarea
-            id="description"
-            name="description"
-            placeholder="Add a description (optional)"
-            value={formData.description}
-            onChange={handleChange}
-            rows="3"
-          />
-        </div>
+          <div className="form-group full-width">
+            <label htmlFor="description">Description</label>
+            <textarea
+              id="description"
+              name="description"
+              placeholder="Add a description (optional)"
+              value={formData.description}
+              onChange={handleChange}
+              rows="3"
+            />
+          </div>
 
         <div className="form-group">
           <label htmlFor="color">Event Color</label>
@@ -725,13 +729,14 @@ export default function ScheduleBuilder() {
           </>
         )}
 
-        <div className="form-buttons">
-          <button onClick={addToSchedule} className="add-button">
-            Add Event
-          </button>
-          <button onClick={clearSchedule} className="clear-button">
-            Clear Schedule
-          </button>
+          <div className="form-buttons">
+            <button onClick={addToSchedule} className="btn btn-primary">
+              Add Event
+            </button>
+            <button onClick={clearSchedule} className="btn btn-danger">
+              Clear Schedule
+            </button>
+          </div>
         </div>
       </div>
 
