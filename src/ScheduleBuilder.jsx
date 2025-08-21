@@ -55,6 +55,7 @@ export default function ScheduleBuilder() {
     course: "",
     day: "Monday",
     date: new Date().toISOString().split("T")[0], // Today's date in YYYY-MM-DD format
+    endDate: new Date().toISOString().split("T")[0], // End date for multiday events
     startTime: "",
     endTime: "",
     description: "",
@@ -63,6 +64,8 @@ export default function ScheduleBuilder() {
     recurrenceType: "weekly", // weekly, monthly, yearly
     repeatWeeks: 1, // Number of weeks to repeat (for weekly recurrence)
     repeatLimited: false, // Whether to limit the number of repetitions
+    isMultiDay: false, // Whether this is a multiday event
+    allDay: false, // Whether this is an all-day event
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -125,9 +128,15 @@ export default function ScheduleBuilder() {
   const timesOverlap = (start1, end1, start2, end2) =>
     !(end1 <= start2 || start1 >= end2);
 
-  const datesMatch = (date1, date2, recurrenceType, repeatWeeks = null, repeatLimited = false) => {
+  const datesMatch = (date1, date2, recurrenceType, repeatWeeks = null, repeatLimited = false, endDate1 = null) => {
     const d1 = new Date(date1);
     const d2 = new Date(date2);
+
+    // For multiday events, check if the target date falls within the event's date range
+    if (endDate1) {
+      const e1 = new Date(endDate1);
+      if (d2 >= d1 && d2 <= e1) return true;
+    }
 
     if (d1.toDateString() === d2.toDateString()) return true;
 
@@ -153,38 +162,75 @@ export default function ScheduleBuilder() {
   };
 
   const addToSchedule = async () => {
-    const { course, date, startTime, endTime } = formData;
+    const { course, date, endDate, startTime, endTime, isMultiDay, allDay } = formData;
 
-    if (!course || !date || !startTime || !endTime) {
+    if (!course || !date) {
       setError("Please fill out all required fields.");
       return;
     }
 
-    if (startTime >= endTime) {
+    // Validation for multiday events
+    if (isMultiDay) {
+      if (!endDate) {
+        setError("Please select an end date for multiday events.");
+        return;
+      }
+      if (new Date(endDate) < new Date(date)) {
+        setError("End date must be after or equal to start date.");
+        return;
+      }
+      if (!allDay && (!startTime || !endTime)) {
+        setError("Please fill out start and end times for timed multiday events.");
+        return;
+      }
+    } else {
+      // Single day event validation
+      if (!allDay && (!startTime || !endTime)) {
+        setError("Please fill out start and end times.");
+        return;
+      }
+    }
+
+    if (!allDay && startTime >= endTime) {
       setError("End time must be after start time.");
       return;
     }
 
     // Check for conflicts
     const conflict = schedule.some((item) => {
-      // Check if dates match (considering recurrence)
+      // Check if dates match (considering recurrence and multiday events)
       const dateMatches =
         datesMatch(
           date,
           item.date,
           item.recurring ? item.recurrenceType : null,
           item.repeatWeeks,
-          item.repeatLimited
+          item.repeatLimited,
+          item.endDate
         ) ||
         (item.recurring && datesMatch(
           date, 
           item.date, 
           item.recurrenceType,
           item.repeatWeeks,
-          item.repeatLimited
+          item.repeatLimited,
+          item.endDate
+        )) ||
+        // Check if new multiday event overlaps with existing events
+        (isMultiDay && datesMatch(
+          item.date,
+          date,
+          null,
+          null,
+          false,
+          endDate
         ));
 
-      // If dates match, check for time overlap
+      // If dates match, check for time overlap (skip for all-day events)
+      if (allDay || item.allDay) {
+        return dateMatches;
+      }
+      
       return (
         dateMatches &&
         timesOverlap(startTime, endTime, item.startTime, item.endTime)
@@ -222,6 +268,7 @@ export default function ScheduleBuilder() {
         course: "",
         day: dayOfWeek,
         date: date,
+        endDate: date,
         startTime: "",
         endTime: "",
         description: "",
@@ -230,6 +277,8 @@ export default function ScheduleBuilder() {
         recurrenceType: "weekly",
         repeatWeeks: 1,
         repeatLimited: false,
+        isMultiDay: false,
+        allDay: false,
       });
       setError("");
     } catch (err) {
@@ -277,6 +326,25 @@ export default function ScheduleBuilder() {
   // Helper function to check if an event should be displayed in a time slot
   const shouldDisplayEvent = (event, hour, date) => {
     const hourNum = parseInt(hour.split(":")[0], 10);
+    
+    // For all-day events, only show in the first hour (0:00)
+    if (event.allDay) {
+      const isFirstHour = hourNum === 0;
+      const eventDate = new Date(event.date);
+      const targetDate = date || selectedDate;
+
+      const dateMatches = datesMatch(
+        eventDate.toISOString().split("T")[0],
+        targetDate.toISOString().split("T")[0],
+        event.recurring ? event.recurrenceType : null,
+        event.repeatWeeks,
+        event.repeatLimited,
+        event.endDate
+      );
+
+      return dateMatches && isFirstHour;
+    }
+
     const eventStartHour = parseInt(event.startTime.split(":")[0], 10);
     const eventEndHour = parseInt(event.endTime.split(":")[0], 10);
 
@@ -297,7 +365,8 @@ export default function ScheduleBuilder() {
       targetDate.toISOString().split("T")[0],
       event.recurring ? event.recurrenceType : null,
       event.repeatWeeks,
-      event.repeatLimited
+      event.repeatLimited,
+      event.endDate
     );
 
     return dateMatches && eventStart <= hourNum && eventEnd > hourNum;
@@ -314,10 +383,18 @@ export default function ScheduleBuilder() {
           date.toISOString().split("T")[0],
           event.recurrenceType,
           event.repeatWeeks,
-          event.repeatLimited
+          event.repeatLimited,
+          event.endDate
         );
       } else {
-        return eventDate.toDateString() === date.toDateString();
+        return datesMatch(
+          eventDate.toISOString().split("T")[0],
+          date.toISOString().split("T")[0],
+          null,
+          null,
+          false,
+          event.endDate
+        );
       }
     });
   };
@@ -474,7 +551,7 @@ export default function ScheduleBuilder() {
         </div>
 
         <div className="form-group">
-          <label htmlFor="date">Date*</label>
+          <label htmlFor="date">{formData.isMultiDay ? 'Start Date*' : 'Date*'}</label>
           <input
             type="date"
             id="date"
@@ -485,29 +562,72 @@ export default function ScheduleBuilder() {
           />
         </div>
 
-        <div className="form-group">
-          <label htmlFor="startTime">Start Time*</label>
-          <input
-            type="time"
-            id="startTime"
-            name="startTime"
-            value={formData.startTime}
-            onChange={handleChange}
-            required
-          />
+        <div className="form-group checkbox-group">
+          <label>
+            <input
+              type="checkbox"
+              name="isMultiDay"
+              checked={formData.isMultiDay}
+              onChange={handleChange}
+            />
+            Multi-day event
+          </label>
         </div>
 
-        <div className="form-group">
-          <label htmlFor="endTime">End Time*</label>
-          <input
-            type="time"
-            id="endTime"
-            name="endTime"
-            value={formData.endTime}
-            onChange={handleChange}
-            required
-          />
+        {formData.isMultiDay && (
+          <div className="form-group">
+            <label htmlFor="endDate">End Date*</label>
+            <input
+              type="date"
+              id="endDate"
+              name="endDate"
+              value={formData.endDate}
+              onChange={handleChange}
+              min={formData.date}
+              required
+            />
+          </div>
+        )}
+
+        <div className="form-group checkbox-group">
+          <label>
+            <input
+              type="checkbox"
+              name="allDay"
+              checked={formData.allDay}
+              onChange={handleChange}
+            />
+            All-day event
+          </label>
         </div>
+
+        {!formData.allDay && (
+          <>
+            <div className="form-group">
+              <label htmlFor="startTime">Start Time*</label>
+              <input
+                type="time"
+                id="startTime"
+                name="startTime"
+                value={formData.startTime}
+                onChange={handleChange}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="endTime">End Time*</label>
+              <input
+                type="time"
+                id="endTime"
+                name="endTime"
+                value={formData.endTime}
+                onChange={handleChange}
+                required
+              />
+            </div>
+          </>
+        )}
 
         <div className="form-group">
           <label htmlFor="description">Description</label>
@@ -677,12 +797,18 @@ export default function ScheduleBuilder() {
                         .filter((item) => shouldDisplayEvent(item, hour, date))
                         .map((item, index) => (
                           <div
-                            className="calendar-event"
+                            className={`calendar-event ${item.allDay ? 'all-day' : ''} ${item.isMultiDay ? 'multiday' : ''}`}
                             key={`${item.id}-${index}`}
                             style={{ backgroundColor: item.color }}
-                            title={`${item.course} (${formatTime(
-                              item.startTime
-                            )} - ${formatTime(item.endTime)})${
+                            title={`${item.course}${
+                              item.allDay 
+                                ? " (All day)" 
+                                : ` (${formatTime(item.startTime)} - ${formatTime(item.endTime)})`
+                            }${
+                              item.isMultiDay 
+                                ? ` - Multi-day: ${formatDate(new Date(item.date))} to ${formatDate(new Date(item.endDate))}` 
+                                : ""
+                            }${
                               item.description ? ": " + item.description : ""
                             }`}
                           >
@@ -727,9 +853,15 @@ export default function ScheduleBuilder() {
                             key={idx}
                             className="month-event"
                             style={{ backgroundColor: event.color }}
-                            title={`${event.course} (${formatTime(
-                              event.startTime
-                            )} - ${formatTime(event.endTime)})${
+                            title={`${event.course}${
+                              event.allDay 
+                                ? " (All day)" 
+                                : ` (${formatTime(event.startTime)} - ${formatTime(event.endTime)})`
+                            }${
+                              event.isMultiDay 
+                                ? ` - Multi-day: ${formatDate(new Date(event.date))} to ${formatDate(new Date(event.endDate))}` 
+                                : ""
+                            }${
                               event.description ? ": " + event.description : ""
                             }`}
                           >
@@ -829,16 +961,22 @@ export default function ScheduleBuilder() {
                         </button>
                       </div>
                       <p className="event-date">
-                        {formatDate(new Date(event.date))}
+                        {event.isMultiDay 
+                          ? `${formatDate(new Date(event.date))} - ${formatDate(new Date(event.endDate))}`
+                          : formatDate(new Date(event.date))
+                        }
                         {event.recurring && (
                           event.repeatLimited && event.recurrenceType === "weekly"
                             ? ` (Repeats ${event.recurrenceType} for ${event.repeatWeeks} weeks)`
                             : ` (Repeats ${event.recurrenceType})`
                         )}
+                        {event.isMultiDay && " (Multi-day)"}
                       </p>
                       <p className="event-time">
-                        {formatTime(event.startTime)} -{" "}
-                        {formatTime(event.endTime)}
+                        {event.allDay 
+                          ? "All day"
+                          : `${formatTime(event.startTime)} - ${formatTime(event.endTime)}`
+                        }
                       </p>
                       {event.description && (
                         <p className="event-description">{event.description}</p>
