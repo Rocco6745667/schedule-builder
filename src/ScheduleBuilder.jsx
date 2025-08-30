@@ -66,6 +66,7 @@ export default function ScheduleBuilder() {
     repeatLimited: false, // Whether to limit the number of repetitions
     isMultiDay: false, // Whether this is a multiday event
     allDay: false, // Whether this is an all-day event
+    excludedDates: [], // Array of excluded dates for multiday events
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -144,9 +145,14 @@ export default function ScheduleBuilder() {
   const timesOverlap = (start1, end1, start2, end2) =>
     !(end1 <= start2 || start1 >= end2);
 
-  const datesMatch = (date1, date2, recurrenceType, repeatWeeks = null, repeatLimited = false, endDate1 = null) => {
+  const datesMatch = (date1, date2, recurrenceType, repeatWeeks = null, repeatLimited = false, endDate1 = null, excludedDates = []) => {
     const d1 = new Date(date1);
     const d2 = new Date(date2);
+
+    // Check if the target date is excluded
+    if (excludedDates && excludedDates.includes(d2.toISOString().split("T")[0])) {
+      return false;
+    }
 
     // Helper function to check if a date falls within a multiday range
     const isDateInMultidayRange = (startDate, endDate, targetDate) => {
@@ -307,7 +313,8 @@ export default function ScheduleBuilder() {
               item.recurrenceType,
               item.repeatWeeks,
               item.repeatLimited,
-              item.endDate
+              item.endDate,
+              item.excludedDates
             )) {
               hasDateOverlap = true;
               break;
@@ -321,7 +328,8 @@ export default function ScheduleBuilder() {
             item.recurrenceType,
             item.repeatWeeks,
             item.repeatLimited,
-            item.endDate
+            item.endDate,
+            item.excludedDates
           );
         }
       } else {
@@ -415,6 +423,7 @@ export default function ScheduleBuilder() {
         repeatLimited: false,
         isMultiDay: false,
         allDay: false,
+        excludedDates: [],
       });
       setError("");
     } catch (err) {
@@ -459,6 +468,86 @@ export default function ScheduleBuilder() {
     }
   };
 
+  // Exclude a specific date from a multiday event
+  const excludeDateFromEvent = async (eventId, dateToExclude) => {
+    try {
+      setLoading(true);
+      
+      // Find the event to update
+      const eventToUpdate = schedule.find(event => 
+        event._id === eventId || event.id === eventId
+      );
+      
+      if (!eventToUpdate) {
+        setError("Event not found.");
+        return;
+      }
+
+      // Add the date to excluded dates
+      const updatedExcludedDates = [
+        ...(eventToUpdate.excludedDates || []),
+        dateToExclude
+      ];
+
+
+
+      // Update via API (we'll need to add this endpoint)
+      // For now, update locally
+      setSchedule((prev) =>
+        prev.map((event) =>
+          event._id === eventId || event.id === eventId
+            ? { ...event, excludedDates: updatedExcludedDates }
+            : event
+        )
+      );
+
+      setError("");
+    } catch (err) {
+      console.error("Error excluding date from event:", err);
+      setError("Failed to exclude date. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Restore a specific date to a multiday event
+  const restoreDateToEvent = async (eventId, dateToRestore) => {
+    try {
+      setLoading(true);
+      
+      // Find the event to update
+      const eventToUpdate = schedule.find(event => 
+        event._id === eventId || event.id === eventId
+      );
+      
+      if (!eventToUpdate) {
+        setError("Event not found.");
+        return;
+      }
+
+      // Remove the date from excluded dates
+      const updatedExcludedDates = (eventToUpdate.excludedDates || []).filter(
+        date => date !== dateToRestore
+      );
+
+      // Update locally
+      setSchedule((prev) =>
+        prev.map((event) =>
+          event._id === eventId || event.id === eventId
+            ? { ...event, excludedDates: updatedExcludedDates }
+            : event
+        )
+      );
+
+      setError("");
+    } catch (err) {
+      console.error("Error restoring date to event:", err);
+      setError("Failed to restore date. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Helper function to check if an event should be displayed in a time slot
   const shouldDisplayEvent = (event, hour, date) => {
     const hourNum = parseInt(hour.split(":")[0], 10);
@@ -471,7 +560,8 @@ export default function ScheduleBuilder() {
       event.recurring ? event.recurrenceType : null,
       event.repeatWeeks,
       event.repeatLimited,
-      event.endDate
+      event.endDate,
+      event.excludedDates
     );
 
     if (!dateMatches) return false;
@@ -513,7 +603,8 @@ export default function ScheduleBuilder() {
           event.recurrenceType,
           event.repeatWeeks,
           event.repeatLimited,
-          event.endDate
+          event.endDate,
+          event.excludedDates
         );
       } else {
         return datesMatch(
@@ -522,7 +613,8 @@ export default function ScheduleBuilder() {
           null,
           null,
           false,
-          event.endDate
+          event.endDate,
+          event.excludedDates
         );
       }
     });
@@ -960,9 +1052,33 @@ export default function ScheduleBuilder() {
                                 : ""
                             }${
                               item.description ? ": " + item.description : ""
+                            }${
+                              item.isMultiDay ? "\nRight-click to exclude this day" : ""
                             }`}
+                            onContextMenu={(e) => {
+                              if (item.isMultiDay) {
+                                e.preventDefault();
+                                if (window.confirm(`Exclude ${formatDate(date)} from "${item.course}"?`)) {
+                                  excludeDateFromEvent(item._id || item.id, date.toISOString().split("T")[0]);
+                                }
+                              }
+                            }}
                           >
                             {item.course}
+                            {item.isMultiDay && (
+                              <button
+                                className="exclude-day-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm(`Exclude ${formatDate(date)} from "${item.course}"?`)) {
+                                    excludeDateFromEvent(item._id || item.id, date.toISOString().split("T")[0]);
+                                  }
+                                }}
+                                title={`Exclude ${formatDate(date)} from this event`}
+                              >
+                                ×
+                              </button>
+                            )}
                           </div>
                         ))}
                     </div>
@@ -1114,7 +1230,11 @@ export default function ScheduleBuilder() {
                       </div>
                       <p className="event-date">
                         {event.isMultiDay && event.endDate
-                          ? `${formatDate(new Date(event.date))} - ${formatDate(new Date(event.endDate))}`
+                          ? `${formatDate(new Date(event.date))} - ${formatDate(new Date(event.endDate))}${
+                              event.excludedDates && event.excludedDates.length > 0 
+                                ? ` (${event.excludedDates.length} day${event.excludedDates.length !== 1 ? 's' : ''} excluded)`
+                                : ""
+                            }`
                           : formatDate(new Date(event.date))
                         }
                         {event.recurring && event.isMultiDay && (
@@ -1139,6 +1259,26 @@ export default function ScheduleBuilder() {
                       </p>
                       {event.description && (
                         <p className="event-description">{event.description}</p>
+                      )}
+                      
+                      {event.isMultiDay && event.excludedDates && event.excludedDates.length > 0 && (
+                        <div className="excluded-dates">
+                          <p className="excluded-dates-label">Excluded dates:</p>
+                          <div className="excluded-dates-list">
+                            {event.excludedDates.map((excludedDate, idx) => (
+                              <span key={idx} className="excluded-date-chip">
+                                {formatDate(new Date(excludedDate))}
+                                <button
+                                  className="restore-date-btn"
+                                  onClick={() => restoreDateToEvent(event._id || event.id, excludedDate)}
+                                  title="Restore this date"
+                                >
+                                  ↻
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       )}
                     </div>
                   );
