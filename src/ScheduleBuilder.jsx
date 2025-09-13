@@ -37,16 +37,20 @@ const months = [
   "December",
 ];
 
-// Color options for events
+// Color options for events - improved visibility and contrast
 const colorOptions = [
-  "#4CAF50", // Green
-  "#2196F3", // Blue
-  "#F44336", // Red
-  "#FF9800", // Orange
-  "#9C27B0", // Purple
-  "#00BCD4", // Cyan
-  "#795548", // Brown
-  "#607D8B", // Blue Grey
+  "#2E8B57", // Sea Green - darker green for better contrast
+  "#1976D2", // Blue - darker blue 
+  "#D32F2F", // Red - slightly darker red
+  "#F57C00", // Orange - darker orange
+  "#7B1FA2", // Purple - darker purple
+  "#0097A7", // Cyan - darker cyan
+  "#5D4037", // Brown - darker brown
+  "#455A64", // Blue Grey - darker blue grey
+  "#C62828", // Dark Red
+  "#1565C0", // Dark Blue
+  "#2E7D32", // Dark Green
+  "#EF6C00", // Dark Orange
 ];
 
 export default function ScheduleBuilder() {
@@ -74,6 +78,7 @@ export default function ScheduleBuilder() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [editingEvent, setEditingEvent] = useState(null); // Track which event is being edited
 
   // Load from API instead of localStorage
   useEffect(() => {
@@ -247,6 +252,11 @@ export default function ScheduleBuilder() {
 
   const addToSchedule = async () => {
     const { course, date, endDate, startTime, endTime, isMultiDay, allDay } = formData;
+
+    // If we're editing an event, call updateEvent instead
+    if (editingEvent) {
+      return updateEvent();
+    }
 
     if (!course || !date) {
       setError("Please fill out all required fields.");
@@ -468,6 +478,212 @@ export default function ScheduleBuilder() {
     }
   };
 
+  // Update an existing event
+  const updateEvent = async () => {
+    const { course, date, endDate, startTime, endTime, isMultiDay, allDay } = formData;
+
+    if (!course || !date) {
+      setError("Please fill out all required fields.");
+      return;
+    }
+
+    // Validation for multiday events
+    if (isMultiDay) {
+      if (!endDate) {
+        setError("Please select an end date for multiday events.");
+        return;
+      }
+      if (new Date(endDate) < new Date(date)) {
+        setError("End date must be after or equal to start date.");
+        return;
+      }
+      if (!allDay && (!startTime || !endTime)) {
+        setError("Please fill out start and end times for timed multiday events.");
+        return;
+      }
+    } else {
+      // Single day event validation
+      if (!allDay && (!startTime || !endTime)) {
+        setError("Please fill out start and end times.");
+        return;
+      }
+    }
+
+    if (!allDay && startTime && endTime && startTime >= endTime) {
+      setError("End time must be after start time.");
+      return;
+    }
+
+    // Check for conflicts with other events (excluding the event being edited)
+    const conflict = schedule.some((item) => {
+      // Skip the event being edited
+      if (item._id === editingEvent._id || item.id === editingEvent.id) {
+        return false;
+      }
+
+      // Same conflict checking logic as addToSchedule
+      const isDateInEventRange = (checkDate, eventStartDate, eventEndDate) => {
+        const check = new Date(checkDate);
+        const start = new Date(eventStartDate);
+        const end = eventEndDate ? new Date(eventEndDate) : start;
+        
+        check.setHours(12, 0, 0, 0);
+        start.setHours(12, 0, 0, 0);
+        end.setHours(12, 0, 0, 0);
+        
+        return check >= start && check <= end;
+      };
+
+      let hasDateOverlap = false;
+
+      if (item.recurring) {
+        if (isMultiDay && endDate) {
+          const newStart = new Date(date);
+          const newEnd = new Date(endDate);
+          
+          for (let d = new Date(newStart); d <= newEnd; d.setDate(d.getDate() + 1)) {
+            if (datesMatch(
+              d.toISOString().split("T")[0],
+              item.date,
+              item.recurrenceType,
+              item.repeatWeeks,
+              item.repeatLimited,
+              item.endDate,
+              item.excludedDates
+            )) {
+              hasDateOverlap = true;
+              break;
+            }
+          }
+        } else {
+          hasDateOverlap = datesMatch(
+            date,
+            item.date,
+            item.recurrenceType,
+            item.repeatWeeks,
+            item.repeatLimited,
+            item.endDate,
+            item.excludedDates
+          );
+        }
+      } else {
+        if (isMultiDay && endDate) {
+          const newStart = new Date(date);
+          const newEnd = new Date(endDate);
+          
+          for (let d = new Date(newStart); d <= newEnd; d.setDate(d.getDate() + 1)) {
+            if (isDateInEventRange(d.toISOString().split("T")[0], item.date, item.endDate)) {
+              hasDateOverlap = true;
+              break;
+            }
+          }
+        } else {
+          hasDateOverlap = isDateInEventRange(date, item.date, item.endDate);
+        }
+      }
+
+      if (!hasDateOverlap) {
+        return false;
+      }
+
+      if (allDay || item.allDay) {
+        return true;
+      }
+      
+      if (startTime && endTime && item.startTime && item.endTime) {
+        return timesOverlap(startTime, endTime, item.startTime, item.endTime);
+      }
+      
+      return true;
+    });
+
+    if (conflict) {
+      setError("Schedule conflict detected!");
+      return;
+    }
+
+    const dayOfWeek = daysOfWeek[new Date(date).getDay() === 0 ? 6 : new Date(date).getDay() - 1];
+    const dayRange = isMultiDay && endDate ? 
+      `${dayOfWeek} - ${daysOfWeek[new Date(endDate).getDay() === 0 ? 6 : new Date(endDate).getDay() - 1]}` : 
+      dayOfWeek;
+
+    try {
+      setLoading(true);
+
+      const updatedEvent = {
+        ...formData,
+        day: isMultiDay ? dayRange : dayOfWeek,
+        endDate: isMultiDay ? formData.endDate : null,
+        startTime: allDay ? "00:00" : formData.startTime,
+        endTime: allDay ? "23:59" : formData.endTime,
+      };
+
+      // Update the event in the schedule
+      setSchedule((prev) =>
+        prev.map((event) =>
+          event._id === editingEvent._id || event.id === editingEvent.id
+            ? { ...event, ...updatedEvent }
+            : event
+        )
+      );
+
+      // Reset form and exit edit mode
+      cancelEdit();
+    } catch (err) {
+      console.error("Error updating event:", err);
+      setError("Failed to update event. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Edit an existing event
+  const editEvent = (event) => {
+    setFormData({
+      course: event.course,
+      day: event.day,
+      date: event.date,
+      endDate: event.endDate || event.date,
+      startTime: event.startTime,
+      endTime: event.endTime,
+      description: event.description || "",
+      color: event.color,
+      recurring: event.recurring || false,
+      recurrenceType: event.recurrenceType || "weekly",
+      repeatWeeks: event.repeatWeeks || 1,
+      repeatLimited: event.repeatLimited || false,
+      isMultiDay: event.isMultiDay || false,
+      allDay: event.allDay || false,
+      excludedDates: event.excludedDates || [],
+    });
+    setEditingEvent(event);
+    setError("");
+  };
+
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingEvent(null);
+    const currentDate = new Date().toISOString().split("T")[0];
+    setFormData({
+      course: "",
+      day: "Monday",
+      date: currentDate,
+      endDate: currentDate,
+      startTime: "",
+      endTime: "",
+      description: "",
+      color: colorOptions[Math.floor(Math.random() * colorOptions.length)],
+      recurring: false,
+      recurrenceType: "weekly",
+      repeatWeeks: 1,
+      repeatLimited: false,
+      isMultiDay: false,
+      allDay: false,
+      excludedDates: [],
+    });
+    setError("");
+  };
+
   // Exclude a specific date from a multiday event
   const excludeDateFromEvent = async (eventId, dateToExclude) => {
     try {
@@ -589,6 +805,47 @@ export default function ScheduleBuilder() {
     const eventEnd = eventEndHour + eventEndMinutes / 60;
 
     return eventStart <= hourNum && eventEnd > hourNum;
+  };
+
+  // Helper function to calculate event positioning and height within hour cells
+  const getEventStyle = (event, hour) => {
+    if (event.allDay) {
+      return { top: '2px', height: 'calc(100% - 4px)' };
+    }
+
+    if (!event.startTime || !event.endTime) {
+      return { top: '2px', height: 'calc(100% - 4px)' };
+    }
+
+    const hourNum = parseInt(hour.split(":")[0], 10);
+    const eventStartHour = parseInt(event.startTime.split(":")[0], 10);
+    const eventEndHour = parseInt(event.endTime.split(":")[0], 10);
+    const eventStartMinutes = parseInt(event.startTime.split(":")[1], 10) || 0;
+    const eventEndMinutes = parseInt(event.endTime.split(":")[1], 10) || 0;
+
+    // Calculate position within the hour cell (0-100%)
+    let topOffset = 0;
+    let height = 100;
+
+    // If event starts in this hour
+    if (eventStartHour === hourNum) {
+      topOffset = (eventStartMinutes / 60) * 100;
+    }
+
+    // If event ends in this hour
+    if (eventEndHour === hourNum) {
+      const endOffset = (eventEndMinutes / 60) * 100;
+      height = endOffset - topOffset;
+    } else if (eventStartHour === hourNum) {
+      // Event starts in this hour but continues to next
+      height = 100 - topOffset;
+    }
+
+    return {
+      top: `${topOffset}%`,
+      height: `${Math.max(height, 15)}%`, // Minimum 15% height for visibility
+      minHeight: '20px'
+    };
   };
 
   // Get events for a specific date
@@ -966,8 +1223,13 @@ export default function ScheduleBuilder() {
 
           <div className="form-buttons">
             <button onClick={addToSchedule} className="btn btn-primary">
-              Add Event
+              {editingEvent ? "Update Event" : "Add Event"}
             </button>
+            {editingEvent && (
+              <button onClick={cancelEdit} className="btn btn-secondary">
+                Cancel Edit
+              </button>
+            )}
             <button onClick={clearSchedule} className="btn btn-danger">
               Clear Schedule
             </button>
@@ -1034,53 +1296,75 @@ export default function ScheduleBuilder() {
                       key={`${date.toISOString()}-${i}`}
                     >
                       {schedule
-                        .filter((item) => shouldDisplayEvent(item, hour, date))
-                        .map((item, index) => (
-                          <div
-                            className={`calendar-event ${item.allDay ? 'all-day' : ''} ${item.isMultiDay ? 'multiday' : ''} ${item.recurring ? 'recurring' : ''}`}
-                            key={`${item.id}-${index}`}
-                            style={{ backgroundColor: item.color }}
-                            title={`${item.course}${
-                              item.allDay 
-                                ? " (All day)" 
-                                : (item.startTime && item.endTime 
-                                    ? ` (${formatTime(item.startTime)} - ${formatTime(item.endTime)})`
-                                    : " (Time not set)")
-                            }${
-                              item.isMultiDay && item.endDate
-                                ? ` - Multi-day: ${formatDate(new Date(item.date))} to ${formatDate(new Date(item.endDate))}` 
-                                : ""
-                            }${
-                              item.description ? ": " + item.description : ""
-                            }${
-                              item.isMultiDay ? "\nRight-click to exclude this day" : ""
-                            }`}
-                            onContextMenu={(e) => {
-                              if (item.isMultiDay) {
-                                e.preventDefault();
-                                if (window.confirm(`Exclude ${formatDate(date)} from "${item.course}"?`)) {
-                                  excludeDateFromEvent(item._id || item.id, date.toISOString().split("T")[0]);
-                                }
-                              }
-                            }}
-                          >
-                            {item.course}
-                            {item.isMultiDay && (
-                              <button
-                                className="exclude-day-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (window.confirm(`Exclude ${formatDate(date)} from "${item.course}"?`)) {
-                                    excludeDateFromEvent(item._id || item.id, date.toISOString().split("T")[0]);
-                                  }
-                                }}
-                                title={`Exclude ${formatDate(date)} from this event`}
-                              >
-                                ×
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                      .filter((item) => shouldDisplayEvent(item, hour, date))
+                      .map((item, index) => {
+                      const eventStyle = getEventStyle(item, hour);
+                      const hourNum = parseInt(hour.split(":")[0], 10);
+                      const eventStartHour = parseInt(item.startTime?.split(":")[0], 10) || 0;
+                      
+                      // Show time label only in the starting hour of the event
+                      const showTimeLabel = !item.allDay && item.startTime && item.endTime && eventStartHour === hourNum;
+                      
+                      return (
+                      <div
+                        className={`calendar-event ${item.allDay ? 'all-day' : ''} ${item.isMultiDay ? 'multiday' : ''} ${item.recurring ? 'recurring' : ''}`}
+                      key={`${item.id}-${index}`}
+                      style={{ 
+                      backgroundColor: item.color,
+                          ...eventStyle,
+                        position: 'absolute',
+                          left: '2px',
+                        right: '2px'
+                        }}
+                        title={`${item.course}${
+                        item.allDay 
+                        ? " (All day)" 
+                        : (item.startTime && item.endTime 
+                          ? ` (${formatTime(item.startTime)} - ${formatTime(item.endTime)})`
+                            : " (Time not set)")
+                      }${
+                          item.isMultiDay && item.endDate
+                              ? ` - Multi-day: ${formatDate(new Date(item.date))} to ${formatDate(new Date(item.endDate))}` 
+                            : ""
+                        }${
+                        item.description ? ": " + item.description : ""
+                      }${
+                      item.isMultiDay ? "\nRight-click to exclude this day" : ""
+                      }`}
+                      onContextMenu={(e) => {
+                      if (item.isMultiDay) {
+                      e.preventDefault();
+                        if (window.confirm(`Exclude ${formatDate(date)} from "${item.course}"?`)) {
+                          excludeDateFromEvent(item._id || item.id, date.toISOString().split("T")[0]);
+                          }
+                      }
+                      }}
+                      >
+                          <div className="event-content">
+                              <div className="event-title">{item.course}</div>
+                                 {showTimeLabel && (
+                                   <div className="event-time-label">
+                                     {formatTime(item.startTime)} - {formatTime(item.endTime)}
+                                   </div>
+                                 )}
+                               </div>
+                               {item.isMultiDay && (
+                                 <button
+                                   className="exclude-day-btn"
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     if (window.confirm(`Exclude ${formatDate(date)} from "${item.course}"?`)) {
+                                       excludeDateFromEvent(item._id || item.id, date.toISOString().split("T")[0]);
+                                     }
+                                   }}
+                                   title={`Exclude ${formatDate(date)} from this event`}
+                                 >
+                                   ×
+                                 </button>
+                               )}
+                             </div>
+                           );
+                         })}
                     </div>
                   ))}
                 </React.Fragment>
@@ -1220,13 +1504,22 @@ export default function ScheduleBuilder() {
                     >
                       <div className="event-header">
                         <h3>{event.course}</h3>
-                        <button
-                          className="remove-event"
-                          onClick={() => removeEvent(event._id || event.id)}
-                          title="Remove event"
-                        >
-                          ×
-                        </button>
+                        <div className="event-actions">
+                          <button
+                            className="edit-event"
+                            onClick={() => editEvent(event)}
+                            title="Edit event"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            className="remove-event"
+                            onClick={() => removeEvent(event._id || event.id)}
+                            title="Remove event"
+                          >
+                            ×
+                          </button>
+                        </div>
                       </div>
                       <p className="event-date">
                         {event.isMultiDay && event.endDate
