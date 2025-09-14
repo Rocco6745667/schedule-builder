@@ -1,13 +1,14 @@
 import axios from "axios";
 
-const API_BASE_URL = "http://localhost:5000/api";
+const API_BASE_URL = "http://localhost:5000/api/schedule";
 
-// Create an axios instance
+// Create an axios instance with timeout
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
+  timeout: 5000, // 5 second timeout
 });
 
 // Helper function to normalize event data from API
@@ -68,82 +69,158 @@ const saveData = (data) => {
 // Fetch all events
 export const fetchSchedule = async () => {
   try {
-    // For a real API, you would use fetch here
-    // const response = await fetch('your-api-url/events');
-    // return await response.json();
-
-    // For now, use localStorage
-    return getStoredData();
+    // Try API first
+    const response = await api.get('/');
+    console.log("Successfully fetched events from API");
+    // Sync API data to localStorage as backup
+    saveData(response.data);
+    return response.data;
   } catch (error) {
-    console.error("Error fetching schedule:", error);
-    throw error;
+    console.error("API error, falling back to localStorage:", error.message);
+    console.log("Using localStorage data as fallback");
+    // Fall back to localStorage if API fails
+    return getStoredData();
   }
 };
 
 // Create a new event
 export const createEvent = async (eventData) => {
   try {
-    // For a real API, you would use fetch here
-    // const response = await fetch('your-api-url/events', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify(eventData)
-    // });
-    // return await response.json();
-
-    // For now, use localStorage
+    // Try API first
+    const response = await api.post('/', eventData);
+    console.log("Successfully created event via API");
+    
+    // Also save to localStorage for backup
+    const events = getStoredData();
+    events.push(response.data);
+    saveData(events);
+    
+    return response.data;
+  } catch (error) {
+    console.error("API error, falling back to localStorage:", error.message);
+    console.log("Creating event in localStorage as fallback");
+    
+    // Fall back to localStorage if API fails
     const events = getStoredData();
     const newEvent = {
       ...eventData,
-      _id: Date.now().toString(),
-      id: Date.now().toString(),
+      _id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     events.push(newEvent);
     saveData(events);
+    console.log("Event saved to localStorage with ID:", newEvent._id);
     return newEvent;
-  } catch (error) {
-    console.error("Error creating event:", error);
-    throw error;
   }
 };
 
 // Delete an event
 export const deleteEvent = async (eventId) => {
   try {
-    // For a real API, you would use fetch here
-    // const response = await fetch(`your-api-url/events/${eventId}`, {
-    //   method: 'DELETE'
-    // });
-    // return await response.json();
-
-    // For now, use localStorage
+    // Try API first
+    const response = await api.delete(`/${eventId}`);
+    console.log("Successfully deleted event via API");
+    
+    // Also delete from localStorage for consistency
     const events = getStoredData();
     const updatedEvents = events.filter(
       (event) => event._id !== eventId && event.id !== eventId
     );
     saveData(updatedEvents);
-    return { success: true };
+    
+    return response.data;
   } catch (error) {
-    console.error("Error deleting event:", error);
-    throw error;
+    console.error("API error, falling back to localStorage:", error.message);
+    console.log("Deleting event from localStorage as fallback");
+    
+    // Fall back to localStorage if API fails
+    const events = getStoredData();
+    const originalLength = events.length;
+    const updatedEvents = events.filter(
+      (event) => event._id !== eventId && event.id !== eventId
+    );
+    
+    if (updatedEvents.length === originalLength) {
+      console.warn("Event not found in localStorage for deletion:", eventId);
+    }
+    
+    saveData(updatedEvents);
+    console.log("Event deleted from localStorage");
+    return { success: true, message: "Event deleted from localStorage" };
+  }
+};
+
+// Update an existing event
+export const updateEvent = async (eventId, eventData) => {
+  try {
+    // Try API first
+    const response = await api.put(`/${eventId}`, eventData);
+    console.log("Successfully updated event via API");
+    
+    // Also update in localStorage for backup
+    const events = getStoredData();
+    const eventIndex = events.findIndex(
+      (event) => event._id === eventId || event.id === eventId
+    );
+    
+    if (eventIndex !== -1) {
+      events[eventIndex] = response.data;
+      saveData(events);
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error("API error, falling back to localStorage:", error.message);
+    console.log("Updating event in localStorage as fallback");
+    
+    // Fall back to localStorage if API fails
+    const events = getStoredData();
+    const eventIndex = events.findIndex(
+      (event) => event._id === eventId || event.id === eventId
+    );
+    
+    if (eventIndex === -1) {
+      console.error("Event not found in localStorage:", eventId);
+      throw new Error('Event not found in localStorage');
+    }
+    
+    // Update the event while preserving the ID
+    const updatedEvent = {
+      ...eventData,
+      _id: events[eventIndex]._id,
+      id: events[eventIndex].id,
+      createdAt: events[eventIndex].createdAt,
+      updatedAt: new Date().toISOString()
+    };
+    
+    events[eventIndex] = updatedEvent;
+    saveData(events);
+    console.log("Event updated in localStorage with ID:", updatedEvent._id);
+    return updatedEvent;
   }
 };
 
 // Clear all events
 export const clearAllEvents = async () => {
   try {
-    // For a real API, you would use fetch here
-    // const response = await fetch('your-api-url/events', {
-    //   method: 'DELETE'
-    // });
-    // return await response.json();
-
-    // For now, use localStorage
+    // Try API first
+    const response = await api.delete('/');
+    console.log("Successfully cleared all events via API");
+    
+    // Also clear localStorage for consistency
     localStorage.removeItem(STORAGE_KEY);
-    return { success: true };
+    
+    return response.data;
   } catch (error) {
-    console.error("Error clearing events:", error);
-    throw error;
+    console.error("API error, falling back to localStorage:", error.message);
+    console.log("Clearing all events from localStorage as fallback");
+    
+    // Fall back to localStorage if API fails
+    localStorage.removeItem(STORAGE_KEY);
+    console.log("All events cleared from localStorage");
+    return { success: true, message: "All events cleared from localStorage" };
   }
 };
 
@@ -151,11 +228,37 @@ export const clearAllEvents = async () => {
 export const testApiConnection = async () => {
   try {
     // Use the api instance we created at the top of the file
-    const response = await api.get("/schedule/test");
-    return response.data;
+    const response = await api.get("/test");
+    return { connected: true, ...response.data };
   } catch (error) {
     console.error("API test failed:", error.message);
-    throw error;
+    return { connected: false, message: error.message };
+  }
+};
+
+// Check if API is available and return status
+export const getApiStatus = async () => {
+  try {
+    const result = await testApiConnection();
+    if (result.connected) {
+      return { 
+        status: 'online', 
+        message: 'API connected - changes will be saved to server and localStorage',
+        apiConnected: true 
+      };
+    } else {
+      return { 
+        status: 'offline', 
+        message: 'API offline - changes will be saved to localStorage only',
+        apiConnected: false 
+      };
+    }
+  } catch (error) {
+    return { 
+      status: 'error', 
+      message: 'API unavailable - using localStorage for data storage',
+      apiConnected: false 
+    };
   }
 };
 

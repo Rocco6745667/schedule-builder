@@ -1061,11 +1061,57 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
+/* API Status Indicator */
+.api-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: var(--font-weight-medium);
+  border: 1px solid var(--gray-300);
+}
+
+.api-status-online {
+  background-color: #d4edda;
+  border-color: #c3e6cb;
+  color: #155724;
+}
+
+.api-status-offline {
+  background-color: #fff3cd;
+  border-color: #ffeaa7;
+  color: #856404;
+}
+
+.api-status-error {
+  background-color: #f8d7da;
+  border-color: #f5c6cb;
+  color: #721c24;
+}
+
+.api-status-checking {
+  background-color: #d1ecf1;
+  border-color: #bee5eb;
+  color: #0c5460;
+}
+
+.status-icon {
+  font-size: 1rem;
+}
+
+.status-message {
+  line-height: 1.4;
+}
+
 /* Print styles */
 @media print {
   .form-container,
   .view-controls,
-  .period-navigation button {
+  .period-navigation button,
+  .api-status {
     display: none;
   }
   

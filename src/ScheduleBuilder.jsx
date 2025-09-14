@@ -3,8 +3,10 @@ import "./styles.css";
 import {
   fetchSchedule,
   createEvent,
+  updateEvent,
   deleteEvent,
   clearAllEvents,
+  getApiStatus,
 } from "./services/api";
 
 // Hours for the daily view
@@ -79,19 +81,25 @@ export default function ScheduleBuilder() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [editingEvent, setEditingEvent] = useState(null); // Track which event is being edited
+  const [apiStatus, setApiStatus] = useState({ status: 'checking', message: 'Checking API connection...', apiConnected: false });
 
-  // Load from API instead of localStorage
+  // Load from API and check status
   useEffect(() => {
-    const getScheduleData = async () => {
+    const initializeApp = async () => {
       try {
         setLoading(true);
         setError(""); // Clear any previous errors
 
-        console.log("Fetching schedule from API...");
-        const data = await fetchSchedule();
-        console.log(`Received ${data.length} events from API`);
+        // Check API status first
+        console.log("Checking API status...");
+        const status = await getApiStatus();
+        setApiStatus(status);
 
-        // Map MongoDB data to ensure compatibility with existing code
+        console.log("Fetching schedule data...");
+        const data = await fetchSchedule();
+        console.log(`Received ${data.length} events`);
+
+        // Map data to ensure compatibility with existing code
         const formattedData = data.map((event) => ({
           ...event,
           id: event._id, // Ensure both id and _id are available
@@ -99,27 +107,19 @@ export default function ScheduleBuilder() {
 
         setSchedule(formattedData);
       } catch (err) {
-        console.error("Error loading from API:", err);
+        console.error("Error loading schedule:", err);
         setError(`Failed to load schedule data: ${err.message}`);
-
-        // Fallback to localStorage if API fails
-        try {
-          console.log("Falling back to localStorage...");
-          const saved = localStorage.getItem("schedule");
-          if (saved) {
-            const localData = JSON.parse(saved);
-            console.log(`Loaded ${localData.length} events from localStorage`);
-            setSchedule(localData);
-          }
-        } catch (localErr) {
-          console.error("Error loading from localStorage:", localErr);
-        }
+        setApiStatus({ 
+          status: 'error', 
+          message: 'Failed to load data - using localStorage only', 
+          apiConnected: false 
+        });
       } finally {
         setLoading(false);
       }
     };
 
-    getScheduleData();
+    initializeApp();
   }, []);
 
   const handleChange = (e) => {
@@ -610,7 +610,7 @@ export default function ScheduleBuilder() {
     try {
       setLoading(true);
 
-      const updatedEvent = {
+      const updatedEventData = {
         ...formData,
         day: isMultiDay ? dayRange : dayOfWeek,
         endDate: isMultiDay ? formData.endDate : null,
@@ -618,11 +618,14 @@ export default function ScheduleBuilder() {
         endTime: allDay ? "23:59" : formData.endTime,
       };
 
-      // Update the event in the schedule
+      // Use the API to update the event
+      const savedEvent = await updateEvent(editingEvent._id || editingEvent.id, updatedEventData);
+
+      // Update the local state with the saved event
       setSchedule((prev) =>
         prev.map((event) =>
           event._id === editingEvent._id || event.id === editingEvent.id
-            ? { ...event, ...updatedEvent }
+            ? savedEvent
             : event
         )
       );
@@ -988,6 +991,17 @@ export default function ScheduleBuilder() {
       <div className="header-section">
         <h1 className="app-title">Schedule Builder</h1>
         <p className="app-subtitle">Organize your time with professional scheduling</p>
+        
+        {/* API Status Indicator */}
+        <div className={`api-status api-status-${apiStatus.status}`}>
+          <span className="status-icon">
+            {apiStatus.status === 'online' && '🟢'}
+            {apiStatus.status === 'offline' && '🟡'} 
+            {apiStatus.status === 'error' && '🔴'}
+            {apiStatus.status === 'checking' && '⏳'}
+          </span>
+          <span className="status-message">{apiStatus.message}</span>
+        </div>
       </div>
 
       {loading && <div className="loading-indicator">Processing...</div>}
