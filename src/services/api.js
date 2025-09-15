@@ -69,17 +69,31 @@ const saveData = (data) => {
 // Fetch all events
 export const fetchSchedule = async () => {
   try {
+    console.log("Attempting to fetch events from API...");
     // Try API first
     const response = await api.get('/');
-    console.log("Successfully fetched events from API");
+    console.log("Successfully fetched events from API:", response.data.length, "events");
+    
     // Sync API data to localStorage as backup
     saveData(response.data);
+    console.log("Synced API data to localStorage");
+    
     return response.data;
   } catch (error) {
-    console.error("API error, falling back to localStorage:", error.message);
-    console.log("Using localStorage data as fallback");
-    // Fall back to localStorage if API fails
-    return getStoredData();
+    console.error("API fetch failed:", error.message);
+    
+    if (error.code === 'ECONNREFUSED') {
+      console.error("Backend server is not running on port 5000");
+    } else if (error.code === 'NETWORK_ERROR') {
+      console.error("Network error - check internet connection");
+    } else if (error.response) {
+      console.error("API responded with error:", error.response.status, error.response.data);
+    }
+    
+    console.log("Falling back to localStorage data");
+    const localData = getStoredData();
+    console.log("Retrieved", localData.length, "events from localStorage");
+    return localData;
   }
 };
 

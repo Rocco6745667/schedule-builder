@@ -99,12 +99,18 @@ export default function ScheduleBuilder() {
         const data = await fetchSchedule();
         console.log(`Received ${data.length} events`);
 
-        // Map data to ensure compatibility with existing code
-        const formattedData = data.map((event) => ({
-          ...event,
-          id: event._id, // Ensure both id and _id are available
-        }));
+        // Map and clean data to ensure compatibility with existing code
+        const formattedData = data
+          .filter(event => event && event.course) // Remove any undefined/invalid events
+          .map((event) => ({
+            ...event,
+            id: event._id || event.id || Date.now().toString(), // Ensure both id and _id are available
+            color: event.color || colorOptions[0], // Ensure color is always set
+            course: event.course || 'Untitled Event', // Ensure course is always set
+            date: event.date || new Date().toISOString().split("T")[0], // Ensure date is set
+          }));
 
+        console.log(`Setting schedule with ${formattedData.length} valid events`);
         setSchedule(formattedData);
       } catch (err) {
         console.error("Error loading schedule:", err);
@@ -151,99 +157,108 @@ export default function ScheduleBuilder() {
     !(end1 <= start2 || start1 >= end2);
 
   const datesMatch = (date1, date2, recurrenceType, repeatWeeks = null, repeatLimited = false, endDate1 = null, excludedDates = []) => {
-    const d1 = new Date(date1);
-    const d2 = new Date(date2);
+    // Create date objects at noon to avoid timezone issues
+    const eventDate = new Date(date1 + 'T12:00:00');
+    const targetDate = new Date(date2 + 'T12:00:00');
 
     // Check if the target date is excluded
-    if (excludedDates && excludedDates.includes(d2.toISOString().split("T")[0])) {
+    if (excludedDates && excludedDates.includes(targetDate.toISOString().split("T")[0])) {
       return false;
     }
 
     // Helper function to check if a date falls within a multiday range
-    const isDateInMultidayRange = (startDate, endDate, targetDate) => {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const target = new Date(targetDate);
+    const isDateInMultidayRange = (startDate, endDate, target) => {
+      const start = new Date(startDate + 'T12:00:00');
+      const end = new Date(endDate + 'T12:00:00');
       return target >= start && target <= end;
     };
 
     // For non-recurring multiday events, check if target date falls within the range
     if (endDate1 && !recurrenceType) {
-      return isDateInMultidayRange(d1, endDate1, d2);
+      return isDateInMultidayRange(date1, endDate1, targetDate);
     }
 
-    // For single-day non-recurring events
+    // For single-day non-recurring events - exact date match
     if (!recurrenceType && !endDate1) {
-      return d1.toDateString() === d2.toDateString();
+      return eventDate.toDateString() === targetDate.toDateString();
     }
 
     // For recurring events
     if (recurrenceType === "weekly") {
-      const daysDifference = Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
-      const weeksDifference = Math.floor(daysDifference / 7);
+      const daysDifference = Math.floor((targetDate - eventDate) / (1000 * 60 * 60 * 24));
       
       // If it's a limited recurring event, check if target date is within the repeat range
-      if (repeatLimited && repeatWeeks && weeksDifference >= repeatWeeks) {
-        return false;
+      if (repeatLimited && repeatWeeks) {
+        const weeksDifference = Math.floor(daysDifference / 7);
+        if (weeksDifference >= repeatWeeks) {
+          return false;
+        }
       }
 
       // For multiday recurring events
       if (endDate1) {
-        const eventDuration = Math.floor((new Date(endDate1) - d1) / (1000 * 60 * 60 * 24));
+        const eventEndDate = new Date(endDate1 + 'T12:00:00');
+        const eventDuration = Math.floor((eventEndDate - eventDate) / (1000 * 60 * 60 * 24));
         
         // Check each weekly occurrence
         for (let week = 0; !repeatLimited || week < repeatWeeks; week++) {
-          const occurrenceStart = new Date(d1);
-          occurrenceStart.setDate(d1.getDate() + (week * 7));
+          const occurrenceStart = new Date(eventDate);
+          occurrenceStart.setDate(eventDate.getDate() + (week * 7));
           
           const occurrenceEnd = new Date(occurrenceStart);
           occurrenceEnd.setDate(occurrenceStart.getDate() + eventDuration);
           
-          if (isDateInMultidayRange(occurrenceStart, occurrenceEnd, d2)) {
+          if (targetDate >= occurrenceStart && targetDate <= occurrenceEnd) {
             return true;
           }
           
           // If we've gone past the target date and it's unlimited repetition, stop checking
-          if (!repeatLimited && occurrenceStart > d2) {
+          if (!repeatLimited && occurrenceStart > targetDate) {
             break;
           }
         }
         return false;
       } else {
-        // Single-day recurring events
+        // Single-day recurring events - check if same day of week
         if (daysDifference < 0) return false;
-        return d1.getDay() === d2.getDay();
+        
+        const eventDayOfWeek = eventDate.getDay();
+        const targetDayOfWeek = targetDate.getDay();
+        
+        return eventDayOfWeek === targetDayOfWeek;
       }
     } else if (recurrenceType === "monthly") {
       // For multiday monthly recurring events
       if (endDate1) {
-        const eventDuration = Math.floor((new Date(endDate1) - d1) / (1000 * 60 * 60 * 24));
-        const targetMonth = d2.getMonth();
-        const targetYear = d2.getFullYear();
+        const eventEndDate = new Date(endDate1 + 'T12:00:00');
+        const eventDuration = Math.floor((eventEndDate - eventDate) / (1000 * 60 * 60 * 24));
+        const targetMonth = targetDate.getMonth();
+        const targetYear = targetDate.getFullYear();
         
         // Check if target date falls within this month's occurrence
-        const monthlyStart = new Date(targetYear, targetMonth, d1.getDate());
+        const monthlyStart = new Date(targetYear, targetMonth, eventDate.getDate(), 12);
         const monthlyEnd = new Date(monthlyStart);
         monthlyEnd.setDate(monthlyStart.getDate() + eventDuration);
         
-        return isDateInMultidayRange(monthlyStart, monthlyEnd, d2);
+        return targetDate >= monthlyStart && targetDate <= monthlyEnd;
       } else {
-        return d1.getDate() === d2.getDate();
+        return eventDate.getDate() === targetDate.getDate();
       }
     } else if (recurrenceType === "yearly") {
       // For multiday yearly recurring events
       if (endDate1) {
-        const eventDuration = Math.floor((new Date(endDate1) - d1) / (1000 * 60 * 60 * 24));
-        const targetYear = d2.getFullYear();
+        const eventEndDate = new Date(endDate1 + 'T12:00:00');
+        const eventDuration = Math.floor((eventEndDate - eventDate) / (1000 * 60 * 60 * 24));
+        const targetYear = targetDate.getFullYear();
         
         // Check if target date falls within this year's occurrence
-        const yearlyStart = new Date(targetYear, d1.getMonth(), d1.getDate());
+        const yearlyStart = new Date(targetYear, eventDate.getMonth(), eventDate.getDate(), 12);
         const yearlyEnd = new Date(yearlyStart);
         yearlyEnd.setDate(yearlyStart.getDate() + eventDuration);
         
-        return isDateInMultidayRange(yearlyStart, yearlyEnd, d2);
+        return targetDate >= yearlyStart && targetDate <= yearlyEnd;
       } else {
-        return d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+        return eventDate.getMonth() === targetDate.getMonth() && eventDate.getDate() === targetDate.getDate();
       }
     }
 
@@ -642,15 +657,24 @@ export default function ScheduleBuilder() {
 
   // Edit an existing event
   const editEvent = (event) => {
+    // Safety check for undefined event
+    if (!event) {
+      console.error("Cannot edit undefined event");
+      setError("Cannot edit event - event data is missing");
+      return;
+    }
+
+    console.log("Editing event:", event);
+
     setFormData({
-      course: event.course,
-      day: event.day,
-      date: event.date,
-      endDate: event.endDate || event.date,
-      startTime: event.startTime,
-      endTime: event.endTime,
+      course: event.course || "",
+      day: event.day || "Monday",
+      date: event.date || new Date().toISOString().split("T")[0],
+      endDate: event.endDate || event.date || new Date().toISOString().split("T")[0],
+      startTime: event.startTime || "",
+      endTime: event.endTime || "",
       description: event.description || "",
-      color: event.color,
+      color: event.color || colorOptions[0],
       recurring: event.recurring || false,
       recurrenceType: event.recurrenceType || "weekly",
       repeatWeeks: event.repeatWeeks || 1,
@@ -769,6 +793,12 @@ export default function ScheduleBuilder() {
 
   // Helper function to check if an event should be displayed in a time slot
   const shouldDisplayEvent = (event, hour, date) => {
+    // Safety check for undefined event
+    if (!event || !event.date) {
+      console.warn("shouldDisplayEvent: Invalid event object", event);
+      return false;
+    }
+
     const hourNum = parseInt(hour.split(":")[0], 10);
     const targetDate = date || selectedDate;
     
@@ -929,16 +959,16 @@ export default function ScheduleBuilder() {
   // Get the start and end dates of the current week
   const getWeekDates = () => {
     const date = new Date(selectedDate);
-    const day = date.getDay() || 7; // Get day of week (0 is Sunday, so we make it 7)
-
+    const day = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    
     // Calculate the date of Monday in this week
     const mondayDate = new Date(date);
-    mondayDate.setDate(date.getDate() - (day - 1));
+    const daysFromMonday = day === 0 ? 6 : day - 1; // Sunday is 6 days from Monday
+    mondayDate.setDate(date.getDate() - daysFromMonday);
 
-    // Calculate the date of Sunday in this week
-    const sundayDate = new Date(date);
-    sundayDate.setDate(date.getDate() + (7 - day));
-
+    // Calculate the date of Sunday in this week  
+    const sundayDate = new Date(mondayDate);
+    sundayDate.setDate(mondayDate.getDate() + 6);
     return { mondayDate, sundayDate };
   };
 
@@ -1285,17 +1315,23 @@ export default function ScheduleBuilder() {
           <div className="calendar">
             <div className="calendar-header">
               <div className="time-slot" />
-              {getWeekDays().map((date) => (
-                <div
-                  className={`day-column-header ${
-                    isToday(date) ? "today" : ""
-                  }`}
-                  key={date.toISOString()}
-                >
-                  {daysOfWeek[date.getDay() === 0 ? 6 : date.getDay() - 1]}
-                  <div className="date-label">{date.getDate()}</div>
-                </div>
-              ))}
+              {getWeekDays().map((date, index) => {
+                const jsDay = date.getDay();
+                const arrayIndex = jsDay === 0 ? 6 : jsDay - 1;
+                const dayName = daysOfWeek[arrayIndex];
+                
+                return (
+                  <div
+                    className={`day-column-header ${
+                      isToday(date) ? "today" : ""
+                    }`}
+                    key={date.toISOString()}
+                  >
+                    {dayName}
+                    <div className="date-label">{date.getDate()}</div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="calendar-grid">
@@ -1310,8 +1346,11 @@ export default function ScheduleBuilder() {
                       key={`${date.toISOString()}-${i}`}
                     >
                       {schedule
-                      .filter((item) => shouldDisplayEvent(item, hour, date))
+                      .filter((item) => item && shouldDisplayEvent(item, hour, date))
                       .map((item, index) => {
+                      // Safety check for undefined item
+                      if (!item) return null;
+                      
                       const eventStyle = getEventStyle(item, hour);
                       const hourNum = parseInt(hour.split(":")[0], 10);
                       const eventStartHour = parseInt(item.startTime?.split(":")[0], 10) || 0;
@@ -1322,15 +1361,15 @@ export default function ScheduleBuilder() {
                       return (
                       <div
                         className={`calendar-event ${item.allDay ? 'all-day' : ''} ${item.isMultiDay ? 'multiday' : ''} ${item.recurring ? 'recurring' : ''}`}
-                      key={`${item.id}-${index}`}
+                      key={`${item.id || item._id || `event-${index}`}-${index}`}
                       style={{ 
-                      backgroundColor: item.color,
-                          ...eventStyle,
-                        position: 'absolute',
+                      backgroundColor: item.color || colorOptions[0],
+                        ...eventStyle,
+                      position: 'absolute',
                           left: '2px',
                         right: '2px'
                         }}
-                        title={`${item.course}${
+                        title={`${item.course || 'Untitled Event'}${
                         item.allDay 
                         ? " (All day)" 
                         : (item.startTime && item.endTime 
@@ -1355,8 +1394,8 @@ export default function ScheduleBuilder() {
                       }}
                       >
                           <div className="event-content">
-                              <div className="event-title">{item.course}</div>
-                                 {showTimeLabel && (
+                              <div className="event-title">{item.course || 'Untitled Event'}</div>
+                                 {showTimeLabel && item.startTime && item.endTime && (
                                    <div className="event-time-label">
                                      {formatTime(item.startTime)} - {formatTime(item.endTime)}
                                    </div>
